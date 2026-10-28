@@ -4,6 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { chromium } from 'playwright-core';
+import runtimePaths from '../../shared/runtime-paths.cjs';
+
+const { runtimeFileFor } = runtimePaths;
 
 const root = path.resolve(import.meta.dirname, '..', '..');
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devpilot-e2e-'));
@@ -13,7 +16,11 @@ const sentinelFile = path.join(projectDir, 'sentinel.txt');
 const fixtureScript = path.join(tempRoot, 'e2e-terminal-fixture.cjs');
 const fixtureEvidence = path.join(tempRoot, 'e2e-terminal-evidence.json');
 const secondFixtureEvidence = path.join(tempRoot, 'e2e-terminal-evidence-2.json');
-const runtimeFile = path.join(root, '.devpilot', 'server.json');
+const runtimeDir = path.join(tempRoot, 'runtime');
+const runtimeFile = runtimeFileFor(root, {
+  ...process.env,
+  DEVPILOT_RUNTIME_DIR: runtimeDir,
+});
 
 fs.mkdirSync(projectDir, { recursive: true });
 fs.writeFileSync(sentinelFile, 'keep this file');
@@ -109,7 +116,12 @@ async function waitForHttp(url, timeoutMs = 30000) {
 
 const dev = spawn(process.execPath, ['scripts/dev.mjs'], {
   cwd: root,
-  env: { ...process.env, DEVPILOT_DB_PATH: dbPath },
+  env: {
+    ...process.env,
+    DEVPILOT_DB_PATH: dbPath,
+    DEVPILOT_RUNTIME_DIR: runtimeDir,
+    DEVPILOT_MAX_TERMINALS_PER_SESSION: '3',
+  },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 
@@ -257,6 +269,26 @@ try {
       new Date().toISOString(),
       'Second test-only child process for terminal isolation checks.',
     );
+  for (const [id, name] of [
+    ['e2e-test-3', 'E2E Test CLI Three'],
+    ['e2e-test-4', 'E2E Test CLI Four'],
+  ]) {
+    toolDb
+      .prepare(
+        `INSERT INTO tool_profiles (
+           id, display_name, command, fixed_args_json, enabled, default_on_quick_start,
+           launch_verified, last_status, last_checked_at, notes
+         ) VALUES (?, ?, ?, ?, 1, 0, 1, 'available', ?, ?)`,
+      )
+      .run(
+        id,
+        name,
+        process.execPath,
+        JSON.stringify([fixtureScript, fixtureEvidence]),
+        new Date().toISOString(),
+        'Test-only profile used to verify the per-session selection limit.',
+      );
+  }
   toolDb.close();
   console.log('PASS test-only process profiles inserted into the isolated database');
 
@@ -374,14 +406,27 @@ try {
     { timeout: 10000 },
   );
   await page.getByRole('radio', { name: /Custom session/ }).check({ force: true });
+  await sessionDialog.getByText('0 of 3 selected', { exact: true }).waitFor({ timeout: 10000 });
+  assert(
+    (await sessionDialog.textContent())?.includes('Select up to 3 profiles'),
+    'Session dialog did not use the server-provided terminal limit',
+  );
   const e2eCheckbox = page.getByTestId('tool-checkbox-e2e-test');
   const secondE2eCheckbox = page.getByTestId('tool-checkbox-e2e-test-2');
+  const thirdE2eCheckbox = page.getByTestId('tool-checkbox-e2e-test-3');
+  const fourthE2eCheckbox = page.getByTestId('tool-checkbox-e2e-test-4');
   await e2eCheckbox.waitFor({ state: 'visible' });
   await secondE2eCheckbox.waitFor({ state: 'visible' });
+  await thirdE2eCheckbox.waitFor({ state: 'visible' });
+  await fourthE2eCheckbox.waitFor({ state: 'visible' });
   assert(!(await e2eCheckbox.isDisabled()), 'Injected launch-ready profile is disabled');
   assert(
     !(await secondE2eCheckbox.isDisabled()),
     'Second injected launch-ready profile is disabled',
+  );
+  assert(
+    !(await thirdE2eCheckbox.isDisabled()),
+    'Third injected launch-ready profile is disabled before the limit is reached',
   );
   assert(
     await page.getByTestId('tool-checkbox-opencode').isDisabled(),
@@ -393,6 +438,23 @@ try {
   );
   await e2eCheckbox.check();
   await secondE2eCheckbox.check();
+  await sessionDialog.getByText('2 of 3 selected', { exact: true }).waitFor({ timeout: 10000 });
+  assert(
+    !(await thirdE2eCheckbox.isDisabled()),
+    'Third profile should stay selectable while two of three are selected',
+  );
+  await thirdE2eCheckbox.check();
+  await sessionDialog.getByText('3 of 3 selected', { exact: true }).waitFor({ timeout: 10000 });
+  assert(
+    await fourthE2eCheckbox.isDisabled(),
+    'A fourth profile should be disabled once the per-session limit is reached',
+  );
+  await thirdE2eCheckbox.uncheck();
+  await sessionDialog.getByText('2 of 3 selected', { exact: true }).waitFor({ timeout: 10000 });
+  assert(
+    !(await fourthE2eCheckbox.isDisabled()),
+    'The extra profile should become selectable again after freeing a slot',
+  );
   assert(
     !(await page.getByTestId('start-session').isDisabled()),
     'Start session should enable after selecting launch-ready profiles',

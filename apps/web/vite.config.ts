@@ -3,11 +3,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import { runtimeFileFor } from '../../shared/runtime-paths.cjs';
 import { createDevLogger } from './devProxyLogger.ts';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(currentDir, '..', '..');
-const runtimeFile = path.join(repoRoot, '.devpilot', 'server.json');
+const runtimeFile = runtimeFileFor(repoRoot);
 
 const serverOrigin = process.env.DEVPILOT_SERVER_ORIGIN;
 const configuredWebPort = process.env.DEVPILOT_WEB_PORT

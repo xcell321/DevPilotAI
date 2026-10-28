@@ -1,45 +1,50 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { ApiError, sendApiError } from '../errors';
-import { MAX_TERMINALS_PER_SESSION, type SessionService } from '../services/sessions';
+import type { SessionService } from '../services/sessions';
 
-const createSessionSchema = z
-  .object({
-    projectId: z.string().trim().min(1, 'Select a project.').max(100),
-    mode: z.enum(['quick', 'custom']),
-    toolIds: z
-      .array(z.string().trim().min(1).max(100))
-      .max(MAX_TERMINALS_PER_SESSION, 'Too many CLI profiles selected.')
-      .optional(),
-    title: z.string().trim().min(1, 'Session title cannot be empty.').max(120).optional(),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.mode === 'quick' && value.toolIds && value.toolIds.length > 0) {
-      context.addIssue({
-        code: 'custom',
-        path: ['toolIds'],
-        message: 'Quick Start does not accept a CLI profile selection.',
-      });
-    }
-    if (value.mode === 'custom' && (!value.toolIds || value.toolIds.length === 0)) {
-      context.addIssue({
-        code: 'custom',
-        path: ['toolIds'],
-        message: 'Select at least one CLI profile.',
-      });
-    }
-    if (value.toolIds && new Set(value.toolIds).size !== value.toolIds.length) {
-      context.addIssue({
-        code: 'custom',
-        path: ['toolIds'],
-        message: 'Duplicate CLI profiles are not allowed.',
-      });
-    }
-  });
+function createSessionSchema(maxTerminalsPerSession: number) {
+  return z
+    .object({
+      projectId: z.string().trim().min(1, 'Select a project.').max(100),
+      mode: z.enum(['quick', 'custom']),
+      toolIds: z
+        .array(z.string().trim().min(1).max(100))
+        .max(maxTerminalsPerSession, 'Too many CLI profiles selected.')
+        .optional(),
+      title: z.string().trim().min(1, 'Session title cannot be empty.').max(120).optional(),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (value.mode === 'quick' && value.toolIds && value.toolIds.length > 0) {
+        context.addIssue({
+          code: 'custom',
+          path: ['toolIds'],
+          message: 'Quick Start does not accept a CLI profile selection.',
+        });
+      }
+      if (value.mode === 'custom' && (!value.toolIds || value.toolIds.length === 0)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['toolIds'],
+          message: 'Select at least one CLI profile.',
+        });
+      }
+      if (value.toolIds && new Set(value.toolIds).size !== value.toolIds.length) {
+        context.addIssue({
+          code: 'custom',
+          path: ['toolIds'],
+          message: 'Duplicate CLI profiles are not allowed.',
+        });
+      }
+    });
+}
 
-function parseCreateBody(body: unknown): z.infer<typeof createSessionSchema> {
-  const parsed = createSessionSchema.safeParse(body);
+function parseCreateBody(
+  body: unknown,
+  schema: ReturnType<typeof createSessionSchema>,
+): z.infer<typeof schema> {
+  const parsed = schema.safeParse(body);
   if (!parsed.success) {
     throw new ApiError(
       400,
@@ -52,6 +57,7 @@ function parseCreateBody(body: unknown): z.infer<typeof createSessionSchema> {
 
 export function createSessionsRouter(service: SessionService): Router {
   const router = Router();
+  const createSessionSchemaWithLimit = createSessionSchema(service.maxTerminalsPerSession);
 
   router.get('/', (_req, res) => {
     res.json({ sessions: service.list() });
@@ -59,7 +65,9 @@ export function createSessionsRouter(service: SessionService): Router {
 
   router.post('/', async (req, res) => {
     try {
-      const session = await service.create(parseCreateBody(req.body));
+      const session = await service.create(
+        parseCreateBody(req.body, createSessionSchemaWithLimit),
+      );
       res.status(201).json({ session });
     } catch (error) {
       sendApiError(res, error);

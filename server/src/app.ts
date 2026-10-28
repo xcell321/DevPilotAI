@@ -55,10 +55,16 @@ export function createApp({
       launcher: createPtyLauncher(),
       maxLive: config.maxTerminals,
     });
-  const sessionService = providedSessionService ?? new SessionService(db, manager);
+  const sessionService =
+    providedSessionService ??
+    new SessionService(db, manager, config.maxTerminalsPerSession);
 
   app.get('/api/health', createHealthHandler(config, db, terminalSupport));
-  app.use('/api/overview', requireToken(token), createOverviewRouter(db));
+  app.use(
+    '/api/overview',
+    requireToken(token),
+    createOverviewRouter(db, sessionService.maxTerminalsPerSession),
+  );
   app.use('/api/sessions', requireToken(token), createSessionsRouter(sessionService));
   app.use('/api/terminals', requireToken(token), createTerminalsRouter(sessionService));
   app.use('/api/tools', requireToken(token), createToolsRouter(db));

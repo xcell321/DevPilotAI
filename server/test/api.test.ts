@@ -63,7 +63,7 @@ describe('health', () => {
     expect(response.body.status).toBe('ok');
     expect(response.body.app.name).toBe('DevPilot AI');
     expect(response.body.terminalSupport.status).toBe('available');
-    expect(response.body.database.schemaVersion).toBe(3);
+    expect(response.body.database.schemaVersion).toBe(4);
     expect(JSON.stringify(response.body)).not.toContain(TOKEN);
   });
 
@@ -90,6 +90,26 @@ describe('local auth', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.tools).toHaveLength(4);
+    expect(JSON.stringify(response.body)).not.toContain(TOKEN);
+  });
+
+  it('does not expose sensitive environment values through the tools API', async () => {
+    const secret = 'api-boundary-secret-that-must-not-leak';
+    const previous = process.env.DEVPILOT_TEST_API_SECRET;
+    process.env.DEVPILOT_TEST_API_SECRET = secret;
+    try {
+      const response = await authorized('get', '/api/tools');
+
+      expect(response.status).toBe(200);
+      expect(JSON.stringify(response.body)).not.toContain(secret);
+      expect(JSON.stringify(response.body)).not.toContain('DEVPILOT_TEST_API_SECRET');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.DEVPILOT_TEST_API_SECRET;
+      } else {
+        process.env.DEVPILOT_TEST_API_SECRET = previous;
+      }
+    }
   });
 
   it('rejects a foreign origin even when the token is present', async () => {
@@ -156,7 +176,12 @@ describe('seeded tool profiles', () => {
       notes: string;
     }>;
 
-    expect(tools.claude?.command).toContain(path.join('@anthropic-ai', 'claude-code', 'bin', 'claude.exe'));
+    if (tools.claude?.command) {
+      expect(path.isAbsolute(tools.claude.command)).toBe(true);
+      expect(['available', 'missing']).toContain(tools.claude.lastStatus);
+    } else {
+      expect(tools.claude?.lastStatus).toBe('unverified');
+    }
     expect(tools.claude?.enabled).toBe(true);
     expect(tools.claude?.defaultOnQuickStart).toBe(true);
     expect(tools.claude?.launchVerified).toBe(true);
@@ -191,6 +216,7 @@ describe('overview', () => {
       enabledToolProfiles: 1,
       runningTerminals: 0,
     });
+    expect(response.body.limits).toEqual({ maxTerminalsPerSession: 4 });
     expect(response.body.tools).toHaveLength(4);
   });
 });
@@ -212,17 +238,17 @@ describe('database schema and migrations', () => {
         'tool_profiles',
       ]),
     );
-    expect(db.pragma('user_version', { simple: true })).toBe(3);
+    expect(db.pragma('user_version', { simple: true })).toBe(4);
   });
 
   it('is idempotent when migrations run again', () => {
     const version = runMigrations(db);
 
-    expect(version).toBe(3);
+    expect(version).toBe(4);
     expect(
       (db.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get() as { count: number })
         .count,
-    ).toBe(3);
+    ).toBe(4);
   });
 
   it('enforces case-insensitive uniqueness on the normalized project path', () => {
@@ -512,7 +538,7 @@ describe('projects', () => {
     legacy.close();
 
     const migrated = openDatabase(legacyPath);
-    expect(migrated.pragma('user_version', { simple: true })).toBe(3);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(4);
     const row = migrated
       .prepare('SELECT path_key FROM projects WHERE id = ?')
       .get('legacy-project') as { path_key: string };
@@ -639,7 +665,55 @@ describe('configuration', () => {
     expect(config.host).toBe('127.0.0.1');
     expect(config.port).toBe(0);
     expect(config.maxTerminals).toBe(8);
+    expect(config.maxTerminalsPerSession).toBe(4);
     expect(config.webDist).toContain(path.join('apps', 'web', 'dist'));
+  });
+
+  it('resolves the default and custom runtime directories consistently', () => {
+    const defaultConfig = loadConfig({ DEVPILOT_DB_PATH: path.join(tempDir, 'config.db') });
+    expect(defaultConfig.runtimeDir).toBe(path.join(defaultConfig.repoRoot, '.devpilot'));
+    expect(defaultConfig.tokenFile).toBe(
+      path.join(defaultConfig.repoRoot, '.devpilot', 'server.json'),
+    );
+
+    const relativeConfig = loadConfig({
+      DEVPILOT_DB_PATH: path.join(tempDir, 'config.db'),
+      DEVPILOT_RUNTIME_DIR: './runtime with spaces',
+    });
+    expect(relativeConfig.runtimeDir).toBe(
+      path.join(relativeConfig.repoRoot, 'runtime with spaces'),
+    );
+
+    const absoluteDir = path.join(tempDir, 'absolute runtime');
+    const absoluteConfig = loadConfig({
+      DEVPILOT_DB_PATH: path.join(tempDir, 'config.db'),
+      DEVPILOT_RUNTIME_DIR: absoluteDir,
+    });
+    expect(absoluteConfig.runtimeDir).toBe(absoluteDir);
+    expect(absoluteConfig.tokenFile).toBe(path.join(absoluteDir, 'server.json'));
+  });
+
+  it('reads and validates the per-session terminal cap', () => {
+    expect(
+      loadConfig({
+        DEVPILOT_DB_PATH: path.join(tempDir, 'config.db'),
+        DEVPILOT_MAX_TERMINALS_PER_SESSION: '2',
+      }).maxTerminalsPerSession,
+    ).toBe(2);
+    expect(() =>
+      loadConfig({
+        DEVPILOT_DB_PATH: path.join(tempDir, 'config.db'),
+        DEVPILOT_MAX_TERMINALS_PER_SESSION: '0',
+      }),
+    ).toThrow(/Invalid DevPilot/);
+
+    expect(
+      loadConfig({
+        DEVPILOT_DB_PATH: path.join(tempDir, 'config.db'),
+        DEVPILOT_MAX_TERMINALS: '2',
+        DEVPILOT_MAX_TERMINALS_PER_SESSION: '4',
+      }).maxTerminalsPerSession,
+    ).toBe(2);
   });
 
   it('reads and validates the live-terminal cap', () => {

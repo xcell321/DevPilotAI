@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Db } from '../db/types';
 import { ApiError } from '../errors';
+import { DEFAULT_MAX_TERMINALS_PER_SESSION } from '../limits';
 import type { ProcessManager } from './processManager';
 import { validateProjectPath } from './projectPaths';
 import {
@@ -19,9 +20,8 @@ import {
   updateToolCheck,
   type ToolProfile,
 } from './toolRegistry';
-import { verifiedProbeArgs } from './toolProbes';
+import { verifiedProbeArgs } from './toolCatalog';
 
-export const MAX_TERMINALS_PER_SESSION = 4;
 const TOOL_CHECK_FRESH_MS = 5 * 60 * 1000;
 
 export type SessionMode = 'quick' | 'custom';
@@ -345,6 +345,7 @@ export class SessionService {
   constructor(
     private readonly db: Db,
     private readonly manager: ProcessManager,
+    readonly maxTerminalsPerSession = DEFAULT_MAX_TERMINALS_PER_SESSION,
   ) {}
 
   list(): SessionSummary[] {
@@ -385,11 +386,11 @@ export class SessionService {
     if (toolIds.length === 0) {
       throw new ApiError(400, 'invalid_request', 'Select at least one CLI profile.');
     }
-    if (toolIds.length > MAX_TERMINALS_PER_SESSION) {
+    if (toolIds.length > this.maxTerminalsPerSession) {
       throw new ApiError(
         400,
         'terminal_limit',
-        `A session can start at most ${MAX_TERMINALS_PER_SESSION} terminals.`,
+        `A session can start at most ${this.maxTerminalsPerSession} terminals.`,
       );
     }
     if (new Set(toolIds).size !== toolIds.length) {

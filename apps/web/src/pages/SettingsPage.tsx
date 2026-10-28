@@ -62,8 +62,10 @@ export function SettingsPage() {
         <div className="space-y-3 px-4 py-4 text-sm text-muted">
           <p>
             In development, Vite proxies <span className="mono text-xs text-ink">/api</span> and
-            injects the token from{' '}
-            <span className="mono text-xs text-ink">.devpilot/server.json</span>. The browser never
+            injects the token from the server runtime file (
+            <span className="mono text-xs text-ink">server.json</span> in{' '}
+            <span className="mono text-xs text-ink">DEVPILOT_RUNTIME_DIR</span>, or{' '}
+            <span className="mono text-xs text-ink">.devpilot</span> by default). The browser never
             reads that file.
           </p>
           <p>

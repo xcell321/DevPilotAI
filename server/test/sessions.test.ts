@@ -322,6 +322,44 @@ describe('session creation contract', () => {
     }
   });
 
+  it('uses the configured per-session terminal limit as the server authority', async () => {
+    const project = await makeProject();
+    addProfile('limit-a', 'stay');
+    addProfile('limit-b', 'stay');
+    addProfile('limit-c', 'stay');
+    const limitedConfig = loadConfig({
+      DEVPILOT_DB_PATH: config.dbPath,
+      DEVPILOT_WEB_DIST: config.webDist,
+      DEVPILOT_MAX_TERMINALS_PER_SESSION: '2',
+    });
+    const limitedApp = createApp({
+      config: limitedConfig,
+      db,
+      token: TOKEN,
+      terminalSupport: { status: 'available', detail: 'test-only session limit' },
+      processManager: manager,
+    });
+
+    const overview = await authorized('get', '/api/overview', limitedApp);
+    expect(overview.body.limits).toEqual({ maxTerminalsPerSession: 2 });
+
+    const rejected = await authorized('post', '/api/sessions', limitedApp).send({
+      projectId: project.id,
+      mode: 'custom',
+      toolIds: ['limit-a', 'limit-b', 'limit-c'],
+    });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.error.message).toContain('Too many CLI profiles');
+
+    const accepted = await authorized('post', '/api/sessions', limitedApp).send({
+      projectId: project.id,
+      mode: 'custom',
+      toolIds: ['limit-a', 'limit-b'],
+    });
+    expect(accepted.status).toBe(201);
+    await authorized('post', `/api/sessions/${accepted.body.session.id}/stop`, limitedApp);
+  });
+
   it('refuses unknown projects and unknown CLI profiles without saving a session', async () => {
     const unknownProject = await authorized('post', '/api/sessions').send({
       projectId: 'missing-project',
@@ -919,7 +957,7 @@ describe('startup reconciliation and migration', () => {
     legacy.close();
 
     const migrated = openDatabase(legacyPath);
-    expect(migrated.pragma('user_version', { simple: true })).toBe(3);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(4);
     const tools = migrated
       .prepare('SELECT id, launch_verified FROM tool_profiles ORDER BY id')
       .all() as { id: string; launch_verified: number }[];

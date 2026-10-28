@@ -16,6 +16,8 @@ interface NewSessionDialogProps {
   open: boolean;
   onClose: () => void;
   tools: ToolProfile[];
+  maxTerminals: number | null;
+  limitsLoading: boolean;
   onCreated: (session: SessionSummary) => void;
 }
 
@@ -42,6 +44,8 @@ export function NewSessionDialog({
   open,
   onClose,
   tools,
+  maxTerminals,
+  limitsLoading,
   onCreated,
 }: NewSessionDialogProps) {
   const [mode, setMode] = useState<SessionMode>('quick');
@@ -111,6 +115,8 @@ export function NewSessionDialog({
     mode === 'custom' &&
     selected.length > 0 &&
     (selectedTools.length !== selected.length || selectedTools.some((tool) => !tool.launchable));
+  const overLimitSelection =
+    mode === 'custom' && maxTerminals !== null && selected.length > maxTerminals;
 
   const changeMode = (nextMode: SessionMode) => {
     setMode(nextMode);
@@ -119,18 +125,22 @@ export function NewSessionDialog({
   };
 
   const toggleTool = (tool: ToolProfile) => {
-    if (mode !== 'custom' || !tool.launchable) return;
+    if (mode !== 'custom' || !tool.launchable || maxTerminals === null) return;
     setSelected((current) => {
       if (current.includes(tool.id)) {
         return current.filter((id) => id !== tool.id);
       }
-      if (current.length >= 4) return current;
+      if (current.length >= maxTerminals) return current;
       return [...current, tool.id];
     });
   };
 
   let startBlockedReason: string | null = null;
-  if (projectError) {
+  if (maxTerminals === null) {
+    startBlockedReason = limitsLoading
+      ? 'Loading the session terminal limit...'
+      : 'The session terminal limit is unavailable. Refresh the page.';
+  } else if (projectError) {
     startBlockedReason = 'Projects could not be loaded.';
   } else if (projects === null) {
     startBlockedReason = 'Loading projects...';
@@ -149,6 +159,8 @@ export function NewSessionDialog({
     startBlockedReason = 'Select at least one launchable CLI profile.';
   } else if (invalidSelection) {
     startBlockedReason = 'A selected CLI profile is no longer launchable. Select it again.';
+  } else if (overLimitSelection) {
+    startBlockedReason = `Select no more than ${maxTerminals} CLI profiles.`;
   }
 
   const submit = async (event: FormEvent) => {
@@ -345,7 +357,11 @@ export function NewSessionDialog({
                   />
                   <span className="block font-medium">Custom session</span>
                   <span className="mt-0.5 block text-[11px] text-muted">
-                    Select up to four profiles
+                    {maxTerminals === null
+                      ? limitsLoading
+                        ? 'Loading session limit'
+                        : 'Session limit unavailable'
+                      : `Select up to ${maxTerminals} profiles`}
                   </span>
                 </label>
               </div>
@@ -354,8 +370,10 @@ export function NewSessionDialog({
             <fieldset>
               <legend className="mb-2 flex items-center justify-between gap-2 text-xs font-medium text-muted">
                 <span>CLI profiles</span>
-                {mode === 'custom' ? (
-                  <span className="text-[11px] font-normal">{selected.length} of 4 selected</span>
+                {mode === 'custom' && maxTerminals !== null ? (
+                  <span className="text-[11px] font-normal">
+                    {selected.length} of {maxTerminals} selected
+                  </span>
                 ) : null}
               </legend>
               {visibleTools.length === 0 ? (
@@ -372,9 +390,16 @@ export function NewSessionDialog({
                         ? candidate?.id === tool.id
                         : selected.includes(tool.id);
                     const maxReached =
-                      mode === 'custom' && !checked && selected.length >= 4;
+                      mode === 'custom' &&
+                      maxTerminals !== null &&
+                      !checked &&
+                      selected.length >= maxTerminals;
                     const disabled =
-                      submitting || mode === 'quick' || !tool.launchable || maxReached;
+                      submitting ||
+                      mode === 'quick' ||
+                      !tool.launchable ||
+                      maxTerminals === null ||
+                      maxReached;
                     return (
                       <label
                         key={tool.id}

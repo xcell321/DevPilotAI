@@ -1,6 +1,6 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import type { Db } from '../db/types';
+import { TOOL_DEFINITIONS } from './toolCatalog';
+import { isExecutableFile, resolveToolCommand } from './toolDiscovery';
 
 export type ToolStatus = 'available' | 'missing' | 'unknown' | 'unverified';
 
@@ -36,6 +36,7 @@ interface SeedProfile {
   id: string;
   displayName: string;
   command: string;
+  commandSource: 'configured' | 'discovered' | 'missing';
   enabled: boolean;
   defaultOnQuickStart: boolean;
   launchVerified: boolean;
@@ -43,78 +44,39 @@ interface SeedProfile {
   notes: string;
 }
 
-const npmGlobalModules = path.join(process.env.APPDATA ?? '', 'npm', 'node_modules');
-const userProfile = process.env.USERPROFILE ?? '';
-
 function detectionStatus(command: string): ToolStatus {
   if (!command) return 'unverified';
-  return fs.existsSync(command) ? 'available' : 'missing';
+  return isExecutableFile(command) ? 'available' : 'missing';
 }
 
-function buildSeedProfiles(): SeedProfile[] {
-  const claudeCommand = path.join(
-    npmGlobalModules,
-    '@anthropic-ai',
-    'claude-code',
-    'bin',
-    'claude.exe',
-  );
-  const opencodeCommand = path.join(npmGlobalModules, 'opencode-ai', 'bin', 'opencode.exe');
-  const freebuffCommand = path.join(userProfile, '.config', 'manicode', 'freebuff.exe');
-
-  return [
-    {
-      id: 'claude',
-      displayName: 'Claude Code CLI',
-      command: claudeCommand,
-      enabled: true,
-      defaultOnQuickStart: true,
-      launchVerified: true,
-      status: detectionStatus(claudeCommand),
-      notes: 'Launch command verified interactively in P0 on this machine.',
-    },
-    {
-      id: 'opencode',
-      displayName: 'OpenCode CLI',
-      command: opencodeCommand,
-      enabled: false,
-      defaultOnQuickStart: false,
-      launchVerified: false,
-      status: detectionStatus(opencodeCommand),
-      notes:
-        'Executable and PTY launch verified in P0, but the TUI rendered blank. Interactive terminal is not verified yet.',
-    },
-    {
-      id: 'freebuff',
-      displayName: 'Freebuff CLI',
-      command: freebuffCommand,
-      enabled: false,
-      defaultOnQuickStart: false,
-      launchVerified: false,
-      status: detectionStatus(freebuffCommand),
-      notes:
-        'Executable and version verified in P0. Interactive behavior is not verified; never launch it automatically.',
-    },
-    {
-      id: 'antigravity',
-      displayName: 'Antigravity',
-      command: '',
-      enabled: false,
-      defaultOnQuickStart: false,
-      launchVerified: false,
-      status: 'unverified',
-      notes:
-        'Executable and launch syntax not verified. Disabled until configured manually; no command is guessed.',
-    },
-  ];
+function buildSeedProfiles(env: NodeJS.ProcessEnv): SeedProfile[] {
+  return TOOL_DEFINITIONS.map((tool) => {
+    const resolved = resolveToolCommand(tool.id, env);
+    const commandSource =
+      resolved.source === 'configured' || resolved.source === 'missing'
+        ? resolved.source
+        : 'discovered';
+    return {
+      id: tool.id,
+      displayName: tool.displayName,
+      command: resolved.command,
+      commandSource,
+      enabled: tool.enabled,
+      defaultOnQuickStart: tool.defaultOnQuickStart,
+      launchVerified: tool.launchVerified,
+      status: detectionStatus(resolved.command),
+      notes: tool.notes,
+    };
+  });
 }
 
-export function seedToolProfiles(db: Db): void {
+export function seedToolProfiles(db: Db, env: NodeJS.ProcessEnv = process.env): void {
   const insert = db.prepare(`
-    INSERT OR IGNORE INTO tool_profiles (
+    INSERT INTO tool_profiles (
       id,
       display_name,
       command,
+      command_source,
       fixed_args_json,
       enabled,
       default_on_quick_start,
@@ -126,17 +88,36 @@ export function seedToolProfiles(db: Db): void {
       @id,
       @displayName,
       @command,
+      @commandSource,
       '[]',
       @enabled,
       @defaultOnQuickStart,
       @launchVerified,
       @status,
-      @checkedAt,
+      NULL,
       @notes
     )
+    ON CONFLICT(id) DO UPDATE SET
+      command = CASE
+        WHEN tool_profiles.command_source = 'manual' THEN tool_profiles.command
+        ELSE excluded.command
+      END,
+      command_source = CASE
+        WHEN tool_profiles.command_source = 'manual' THEN tool_profiles.command_source
+        ELSE excluded.command_source
+      END,
+      last_status = CASE
+        WHEN tool_profiles.command_source = 'manual' THEN tool_profiles.last_status
+        WHEN tool_profiles.command = excluded.command THEN tool_profiles.last_status
+        ELSE excluded.last_status
+      END,
+      last_checked_at = CASE
+        WHEN tool_profiles.command_source = 'manual' THEN tool_profiles.last_checked_at
+        WHEN tool_profiles.command = excluded.command THEN tool_profiles.last_checked_at
+        ELSE NULL
+      END
   `);
 
-  const checkedAt = new Date().toISOString();
   const seed = db.transaction((profiles: SeedProfile[]) => {
     for (const profile of profiles) {
       insert.run({
@@ -144,12 +125,11 @@ export function seedToolProfiles(db: Db): void {
         enabled: profile.enabled ? 1 : 0,
         defaultOnQuickStart: profile.defaultOnQuickStart ? 1 : 0,
         launchVerified: profile.launchVerified ? 1 : 0,
-        checkedAt,
       });
     }
   });
 
-  seed(buildSeedProfiles());
+  seed(buildSeedProfiles(env));
 }
 
 function parseFixedArgs(value: string): string[] {

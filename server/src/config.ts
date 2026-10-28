@@ -1,6 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import {
+  resolveRuntimeDir,
+  runtimeFileFor,
+} from '../../shared/runtime-paths.cjs';
+import { DEFAULT_MAX_TERMINALS_PER_SESSION } from './limits';
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 
@@ -13,6 +18,7 @@ export interface AppConfig {
   runtimeDir: string;
   tokenFile: string;
   maxTerminals: number;
+  maxTerminalsPerSession: number;
   version: string;
 }
 
@@ -23,6 +29,12 @@ const envSchema = z.object({
   DEVPILOT_WEB_DIST: z.string().min(1).optional(),
   DEVPILOT_RUNTIME_DIR: z.string().min(1).optional(),
   DEVPILOT_MAX_TERMINALS: z.coerce.number().int().min(1).max(32).default(8),
+  DEVPILOT_MAX_TERMINALS_PER_SESSION: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(32)
+    .default(DEFAULT_MAX_TERMINALS_PER_SESSION),
 });
 
 export const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
@@ -67,9 +79,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const dbPath = value.DEVPILOT_DB_PATH
     ? path.resolve(repoRoot, value.DEVPILOT_DB_PATH)
     : path.join(repoRoot, 'data', 'devpilot.db');
-  const runtimeDir = value.DEVPILOT_RUNTIME_DIR
-    ? path.resolve(repoRoot, value.DEVPILOT_RUNTIME_DIR)
-    : path.join(repoRoot, '.devpilot');
+  const runtimeEnv = {
+    ...env,
+    DEVPILOT_RUNTIME_DIR: value.DEVPILOT_RUNTIME_DIR,
+  };
+  const runtimeDir = resolveRuntimeDir(repoRoot, runtimeEnv);
+  const maxTerminals = value.DEVPILOT_MAX_TERMINALS;
+  const maxTerminalsPerSession = Math.min(
+    value.DEVPILOT_MAX_TERMINALS_PER_SESSION,
+    maxTerminals,
+  );
 
   return {
     repoRoot,
@@ -80,8 +99,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       ? path.resolve(repoRoot, value.DEVPILOT_WEB_DIST)
       : path.join(repoRoot, 'apps', 'web', 'dist'),
     runtimeDir,
-    tokenFile: path.join(runtimeDir, 'server.json'),
-    maxTerminals: value.DEVPILOT_MAX_TERMINALS,
+    tokenFile: runtimeFileFor(repoRoot, runtimeEnv),
+    maxTerminals,
+    maxTerminalsPerSession,
     version: readServerVersion(),
   };
 }

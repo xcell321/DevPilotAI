@@ -104,8 +104,13 @@ export interface OverviewCounts {
   runningTerminals: number;
 }
 
+export interface OverviewLimits {
+  maxTerminalsPerSession: number;
+}
+
 export interface Overview {
   counts: OverviewCounts;
+  limits: OverviewLimits;
   tools: ToolProfile[];
 }
 

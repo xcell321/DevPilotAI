@@ -38,6 +38,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ['shared/**/*.cjs'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+  {
     files: ['tests/e2e/**/*.mjs'],
     languageOptions: {
       globals: {

@@ -53,6 +53,8 @@ export default function App() {
         open={newSessionOpen}
         onClose={() => setNewSessionOpen(false)}
         tools={backend.overview?.tools ?? []}
+        maxTerminals={backend.overview?.limits.maxTerminalsPerSession ?? null}
+        limitsLoading={backend.overview === null && backend.overviewError === null}
         onCreated={() => {
           setNewSessionOpen(false);
           navigate('/sessions');

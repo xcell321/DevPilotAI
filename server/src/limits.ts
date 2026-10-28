@@ -1,0 +1,1 @@
+export const DEFAULT_MAX_TERMINALS_PER_SESSION = 4;

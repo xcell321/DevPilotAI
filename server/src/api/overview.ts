@@ -10,7 +10,7 @@ interface CountsRow {
   runningTerminals: number;
 }
 
-export function createOverviewRouter(db: Db): Router {
+export function createOverviewRouter(db: Db, maxTerminalsPerSession: number): Router {
   const router = Router();
 
   router.get('/', (_req, res) => {
@@ -32,6 +32,9 @@ export function createOverviewRouter(db: Db): Router {
         toolProfiles: Number(counts.toolProfiles),
         enabledToolProfiles: Number(counts.enabledToolProfiles),
         runningTerminals: Number(counts.runningTerminals),
+      },
+      limits: {
+        maxTerminalsPerSession,
       },
       tools: listToolProfiles(db),
     });

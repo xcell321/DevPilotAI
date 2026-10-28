@@ -54,7 +54,11 @@ const processManager = new ProcessManager({
   launcher: createPtyLauncher(),
   maxLive: config.maxTerminals,
 });
-const sessionService = new SessionService(db, processManager);
+const sessionService = new SessionService(
+  db,
+  processManager,
+  config.maxTerminalsPerSession,
+);
 const app = createApp({
   config,
   db,

@@ -8,7 +8,7 @@ import {
   updateToolCheck,
 } from '../services/toolRegistry';
 import { probeExecutable } from '../services/toolProbe';
-import { verifiedProbeArgs } from '../services/toolProbes';
+import { verifiedProbeArgs } from '../services/toolCatalog';
 
 // Shape for a future POST /api/tools endpoint. No shell field is accepted.
 export const toolProfileCreateSchema = z
