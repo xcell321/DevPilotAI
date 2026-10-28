@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DevPilot AI - P0 Terminal Proof</title>
+    <link rel="stylesheet" href="/vendor/xterm.css" />
+    <style>
+      :root {
+        --bg: #0b1220;
+        --panel: #111827;
+        --panel-2: #151f2e;
+        --primary: #2563eb;
+        --ok: #10b981;
+        --warn: #f59e0b;
+        --error: #ef4444;
+        --text: #f9fafb;
+        --muted: #9ca3af;
+        --border: rgba(255, 255, 255, 0.08);
+        --radius: 12px;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, "Segoe UI", system-ui, sans-serif;
+        font-size: 14px;
+      }
+      .app {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 12px 20px;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+      }
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .brand-mark {
+        width: 28px; height: 28px; border-radius: 8px;
+        background: linear-gradient(135deg, var(--primary), #1d4ed8);
+        display: grid; place-items: center; font-weight: 700; font-size: 13px;
+      }
+      .brand h1 { font-size: 15px; margin: 0; font-weight: 600; }
+      .brand p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+      .health { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+      .dot.ok { background: var(--ok); }
+      .dot.error { background: var(--error); }
+      .toolbar {
+        display: grid;
+        grid-template-columns: minmax(150px, 200px) minmax(260px, 1fr) auto;
+        gap: 12px;
+        align-items: end;
+        padding: 14px 20px;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel-2);
+      }
+      label { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+      select, input {
+        width: 100%;
+        background: #0d1524;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 9px 10px;
+        font: inherit;
+        outline: none;
+      }
+      select:focus, input:focus { border-color: rgba(37, 99, 235, 0.8); }
+      .buttons { display: flex; gap: 8px; }
+      button {
+        background: #1b2537;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 9px 14px;
+        font: inherit;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      button:hover { border-color: rgba(255, 255, 255, 0.2); }
+      button.primary { background: var(--primary); border-color: var(--primary); }
+      button.primary:hover { background: #1d4ed8; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      .workspace { flex: 1; display: flex; flex-direction: column; padding: 16px 20px 20px; min-height: 0; }
+      .panel {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 9px 14px;
+        border-bottom: 1px solid var(--border);
+        background: #0f1726;
+        font-size: 12px;
+      }
+      .panel-title { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+      .panel-title strong { color: var(--text); font-weight: 600; }
+      .pill {
+        padding: 3px 9px;
+        border-radius: 999px;
+        font-size: 11px;
+        border: 1px solid var(--border);
+        color: var(--muted);
+      }
+      .pill.running { color: var(--ok); border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.08); }
+      .pill.exited { color: var(--muted); }
+      .pill.error { color: var(--error); border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.08); }
+      .terminal-host { flex: 1; min-height: 0; padding: 8px 10px; background: #0a101c; }
+      .terminal-host .xterm { height: 100%; }
+      .notice { margin-top: 10px; color: var(--muted); font-size: 12px; min-height: 18px; }
+      .notice.error { color: var(--error); }
+      .hint { color: var(--muted); font-size: 11px; }
+      @media (max-width: 900px) {
+        .toolbar { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <div class="brand">
+          <div class="brand-mark">DP</div>
+          <div>
+            <h1>DevPilot AI</h1>
+            <p>P0 proof - real CLI over node-pty, xterm.js, and WebSocket</p>
+          </div>
+        </div>
+        <div class="health"><span id="health-dot" class="dot"></span><span id="health-text">Checking backend...</span></div>
+      </header>
+
+      <div class="toolbar">
+        <div>
+          <label for="tool">CLI profile</label>
+          <select id="tool"></select>
+        </div>
+        <div>
+          <label for="cwd">Working directory</label>
+          <input id="cwd" spellcheck="false" />
+        </div>
+        <div class="buttons">
+          <button id="start" class="primary">Start terminal</button>
+          <button id="stop" disabled>Stop</button>
+          <button id="clear" disabled>Clear</button>
+        </div>
+      </div>
+
+      <main class="workspace">
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <strong id="panel-title">No terminal</strong>
+              <span id="status" class="pill">idle</span>
+              <span id="pid" class="hint"></span>
+            </div>
+            <span class="hint">Input is sent to the real child process</span>
+          </div>
+          <div id="terminal-host" class="terminal-host"></div>
+        </section>
+        <div id="notice" class="notice"></div>
+      </main>
+    </div>
+
+    <script src="/vendor/xterm.js"></script>
+    <script src="/vendor/addon-fit.js"></script>
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token") || "";
+      const FitAddonCtor = window.FitAddon?.FitAddon || window.FitAddon;
+      const host = document.getElementById("terminal-host");
+      const toolSelect = document.getElementById("tool");
+      const cwdInput = document.getElementById("cwd");
+      const startButton = document.getElementById("start");
+      const stopButton = document.getElementById("stop");
+      const clearButton = document.getElementById("clear");
+      const statusPill = document.getElementById("status");
+      const pidLabel = document.getElementById("pid");
+      const panelTitle = document.getElementById("panel-title");
+      const notice = document.getElementById("notice");
+      const healthDot = document.getElementById("health-dot");
+      const healthText = document.getElementById("health-text");
+
+      let term = null;
+      let fitAddon = null;
+      let socket = null;
+      let terminalId = null;
+      let resizeTimer = null;
+
+      cwdInput.value = "C:\\CAPSTONE\\DevPilotAI";
+
+      function setNotice(message, isError = false) {
+        notice.textContent = message || "";
+        notice.className = isError ? "notice error" : "notice";
+      }
+
+      function setStatus(status, detail = "") {
+        statusPill.textContent = status;
+        statusPill.className = "pill " + status;
+        pidLabel.textContent = detail;
+      }
+
+      async function api(pathname, options = {}) {
+        const response = await fetch(pathname, {
+          ...options,
+          headers: {
+            "content-type": "application/json",
+            "x-devpilot-token": token,
+            ...(options.headers || {}),
+          },
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body?.error?.message || `Request failed with ${response.status}`);
+        }
+        return body;
+      }
+
+      function createTerminal() {
+        if (term) {
+          term.dispose();
+          term = null;
+        }
+        host.innerHTML = "";
+        term = new window.Terminal({
+          cursorBlink: true,
+          fontFamily: "Cascadia Mono, Consolas, monospace",
+          fontSize: 13,
+          scrollback: 5000,
+          theme: {
+            background: "#0a101c",
+            foreground: "#f9fafb",
+            cursor: "#10b981",
+            selectionBackground: "rgba(37, 99, 235, 0.35)",
+          },
+        });
+        fitAddon = new FitAddonCtor();
+        term.loadAddon(fitAddon);
+        term.open(host);
+        fitAddon.fit();
+        window.__devpilotTerm = term;
+        term.onData((data) => {
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "input", data }));
+          }
+        });
+        term.onResize(({ cols, rows }) => {
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "resize", cols, rows }));
+          }
+        });
+      }
+
+      function connect(terminal) {
+        const url = `ws://${window.location.host}/ws/terminals/${terminal.id}?token=${encodeURIComponent(token)}`;
+        socket = new WebSocket(url);
+        socket.addEventListener("open", () => {
+          setStatus("running", `pid ${terminal.pid}`);
+          term.focus();
+        });
+        socket.addEventListener("message", (event) => {
+          const message = JSON.parse(event.data);
+          if (message.type === "output") {
+            term.write(message.data);
+          } else if (message.type === "exit") {
+            setStatus("exited", `exit code ${message.exitCode}`);
+            term.write(`\r\n[process exited with code ${message.exitCode}]\r\n`);
+            setRunningUi(false);
+          } else if (message.type === "status") {
+            setStatus(message.status, `pid ${message.pid}`);
+          } else if (message.type === "error") {
+            setNotice(message.message, true);
+          }
+        });
+        socket.addEventListener("close", () => {
+          setRunningUi(false);
+        });
+        socket.addEventListener("error", () => {
+          setNotice("WebSocket connection failed.", true);
+        });
+      }
+
+      function setRunningUi(running) {
+        startButton.disabled = running;
+        stopButton.disabled = !running;
+        clearButton.disabled = !term;
+      }
+
+      async function startTerminal() {
+        setNotice("");
+        startButton.disabled = true;
+        setStatus("starting");
+        createTerminal();
+        try {
+          const terminal = await api("/api/terminals", {
+            method: "POST",
+            body: JSON.stringify({
+              toolId: toolSelect.value,
+              cwd: cwdInput.value,
+              cols: term.cols,
+              rows: term.rows,
+            }),
+          });
+          terminalId = terminal.id;
+          panelTitle.textContent = toolSelect.options[toolSelect.selectedIndex].textContent;
+          setRunningUi(true);
+          connect(terminal);
+        } catch (error) {
+          setStatus("error");
+          setNotice(error.message, true);
+          setRunningUi(false);
+        }
+      }
+
+      stopButton.addEventListener("click", async () => {
+        if (!terminalId) return;
+        try {
+          await api(`/api/terminals/${terminalId}/stop`, { method: "POST" });
+        } catch (error) {
+          setNotice(error.message, true);
+        }
+      });
+
+      clearButton.addEventListener("click", () => {
+        term?.clear();
+      });
+
+      startButton.addEventListener("click", startTerminal);
+
+      window.addEventListener("resize", () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => fitAddon?.fit(), 120);
+      });
+
+      async function loadHealth() {
+        try {
+          const health = await api("/api/health");
+          healthDot.classList.add("ok");
+          healthText.textContent = `backend ok - node ${health.node} - node-pty ${health.nodePty}`;
+          toolSelect.innerHTML = "";
+          for (const tool of health.tools) {
+            const option = document.createElement("option");
+            option.value = tool.id;
+            option.textContent = `${tool.displayName} - ${tool.status}`;
+            option.disabled = !tool.launchable;
+            option.title = tool.note || "";
+            toolSelect.appendChild(option);
+          }
+          const firstLaunchable = health.tools.find((tool) => tool.launchable);
+          if (firstLaunchable) toolSelect.value = firstLaunchable.id;
+          if (!firstLaunchable) {
+            startButton.disabled = true;
+            setNotice("No verified CLI is available on this machine.", true);
+          }
+        } catch (error) {
+          healthDot.classList.add("error");
+          healthText.textContent = "backend unreachable";
+          setNotice(error.message, true);
+        }
+      }
+
+      loadHealth();
+    </script>
+  </body>
+</html>

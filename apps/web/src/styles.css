@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #0b1220;
+  --color-panel: #111827;
+  --color-panel-2: #151f2e;
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-soft: rgba(37, 99, 235, 0.14);
+  --color-ok: #10b981;
+  --color-ok-soft: rgba(16, 185, 129, 0.12);
+  --color-warn: #f59e0b;
+  --color-warn-soft: rgba(245, 158, 11, 0.12);
+  --color-danger: #ef4444;
+  --color-danger-soft: rgba(239, 68, 68, 0.12);
+  --color-text: #f9fafb;
+  --color-muted: #9ca3af;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+  --color-hover: rgba(255, 255, 255, 0.04);
+  --radius-panel: 12px;
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-app text-ink antialiased;
+    font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: rgba(37, 99, 235, 0.45);
+  }
+
+  * {
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+    scrollbar-width: thin;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-panel border border-line bg-panel;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-panel-2 px-3 py-2 text-sm font-medium text-ink transition-colors hover:border-lineStrong hover:bg-hover disabled:cursor-not-allowed disabled:opacity-45;
+  }
+
+  .btn-primary {
+    @apply border-primary bg-primary hover:border-primary hover:bg-primary-hover;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-line bg-app px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-muted focus:border-primary disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .mono {
+    font-family: "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
+  }
+}
+
+.terminal-panel {
+  min-width: 280px;
+  min-height: 240px;
+  resize: both;
+}
+
+.terminal-panel-maximized {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  resize: none;
+}
+
+.terminal-panel .xterm {
+  height: 100%;
+}
+
+.terminal-panel .xterm-viewport {
+  background-color: transparent !important;
+}

@@ -1,0 +1,23 @@
+{
+  "name": "devpilot-terminal-proof",
+  "version": "0.0.0",
+  "private": true,
+  "description": "P0 proof: node-pty + xterm.js + WebSocket running a real local CLI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node scripts/headless-test.js && node scripts/sqlite-check.js",
+    "test:browser": "node scripts/browser-test.js"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "better-sqlite3": "13.0.3",
+    "express": "5.3.0",
+    "node-pty": "1.1.0",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.64.1"
+  }
+}
