@@ -3,13 +3,14 @@ import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import type { AppOutletContext } from '../components/AppLayout';
 import { EnabledBadge, LaunchBadge, ToolStatusBadge } from '../components/Badge';
-import { apiPost } from '../lib/api';
+import { apiPatch, apiPost } from '../lib/api';
 import type { ToolCheckResponse } from '../lib/types';
 
 export function CliToolsPage() {
   const { backend } = useOutletContext<AppOutletContext>();
   const { overview, overviewError, refresh } = backend;
   const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [checkMessage, setCheckMessage] = useState<string | null>(null);
   const [checkError, setCheckError] = useState<string | null>(null);
 
@@ -32,6 +33,21 @@ export function CliToolsPage() {
       setCheckError(error instanceof Error ? error.message : 'Could not check the CLI profile.');
     } finally {
       setCheckingId(null);
+    }
+  };
+
+  const toggleTool = async (id: string, enable: boolean) => {
+    setTogglingId(id);
+    setCheckError(null);
+    setCheckMessage(null);
+    try {
+      await apiPatch(`/api/tools/${encodeURIComponent(id)}`, { enabled: enable });
+      await refresh();
+      setCheckMessage(`${id} is now ${enable ? 'enabled' : 'disabled'}.`);
+    } catch (error) {
+      setCheckError(error instanceof Error ? error.message : 'Could not update CLI status.');
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -127,9 +143,21 @@ export function CliToolsPage() {
                   </dd>
                 </div>
                 <div>
+                  <dt className="text-[11px] text-muted">Detected version</dt>
+                  <dd className="mono mt-0.5 break-all text-xs font-medium text-ink">
+                    {tool.version ?? (tool.lastStatus === 'missing' ? 'Not installed' : 'Not checked yet')}
+                  </dd>
+                </div>
+                <div>
                   <dt className="text-[11px] text-muted">Fixed arguments</dt>
                   <dd className="mono mt-0.5 break-all text-xs text-ink">
                     {tool.fixedArgs.length ? tool.fixedArgs.join(' ') : 'None'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-muted">Authentication guidance</dt>
+                  <dd className="mt-0.5 text-xs text-ink">
+                    {tool.authGuidance || 'No authentication guidance provided.'}
                   </dd>
                 </div>
               </dl>
@@ -146,20 +174,54 @@ export function CliToolsPage() {
                     ? `Last checked ${new Date(tool.lastCheckedAt).toLocaleString()}`
                     : 'Not checked in this workspace yet'}
                 </p>
-                <button
-                  type="button"
-                  className="btn px-2.5 py-1.5"
-                  onClick={() => void checkTool(tool.id)}
-                  disabled={checkingId !== null}
-                  data-testid={`check-tool-${tool.id}`}
-                >
-                  {checkingId === tool.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <div className="flex items-center gap-2">
+                  {tool.enabled ? (
+                    <button
+                      type="button"
+                      className="btn px-2.5 py-1.5 text-danger hover:border-danger"
+                      onClick={() => void toggleTool(tool.id, false)}
+                      disabled={togglingId !== null || checkingId !== null}
+                      data-testid={`toggle-tool-${tool.id}`}
+                    >
+                      {togglingId === tool.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : null}
+                      Disable
+                    </button>
                   ) : (
-                    <RefreshCw className="h-3.5 w-3.5" />
+                    <button
+                      type="button"
+                      className="btn btn-primary px-2.5 py-1.5"
+                      onClick={() => void toggleTool(tool.id, true)}
+                      disabled={togglingId !== null || checkingId !== null || !tool.launchVerified}
+                      title={
+                        tool.launchVerified
+                          ? 'Enable this CLI profile for sessions'
+                          : 'Interactive launch must be verified before this profile can be enabled'
+                      }
+                      data-testid={`toggle-tool-${tool.id}`}
+                    >
+                      {togglingId === tool.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : null}
+                      Enable
+                    </button>
                   )}
-                  {checkingId === tool.id ? 'Checking...' : 'Check non-interactively'}
-                </button>
+                  <button
+                    type="button"
+                    className="btn px-2.5 py-1.5"
+                    onClick={() => void checkTool(tool.id)}
+                    disabled={checkingId !== null || togglingId !== null}
+                    data-testid={`check-tool-${tool.id}`}
+                  >
+                    {checkingId === tool.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    {checkingId === tool.id ? 'Checking...' : 'Check non-interactively'}
+                  </button>
+                </div>
               </div>
             </article>
           ))}

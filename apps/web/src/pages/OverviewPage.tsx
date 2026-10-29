@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { EmptyState } from '../components/EmptyState';
-import { EnabledBadge } from '../components/Badge';
+import { EnabledBadge, LaunchBadge } from '../components/Badge';
 import type { AppOutletContext } from '../components/AppLayout';
 
 export function OverviewPage() {
@@ -134,10 +134,18 @@ export function OverviewPage() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-ink">{tool.displayName}</p>
                     <p className="truncate text-[11px] text-muted">
-                      {tool.enabled ? 'Enabled for sessions' : 'Not enabled'}
+                      {tool.launchable
+                        ? 'Ready to launch'
+                        : tool.launchReason ?? (tool.enabled ? 'Enabled' : 'Not enabled')}
                     </p>
                   </div>
-                  <EnabledBadge enabled={tool.enabled} />
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <EnabledBadge enabled={tool.enabled} />
+                    <LaunchBadge
+                      launchVerified={tool.launchVerified}
+                      launchable={tool.launchable}
+                    />
+                  </div>
                 </div>
               ))
             ) : (

@@ -1,7 +1,10 @@
 import { AlertTriangle, FolderOpen, Loader2, X } from 'lucide-react';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import limits from '../../../../shared/limits.json';
 import { apiDelete, apiPatch, apiPost } from '../lib/api';
 import type { Project } from '../lib/types';
+
+const { MAX_PROJECT_NAME_LENGTH } = limits;
 
 interface ModalShellProps {
   title: string;
@@ -216,7 +219,7 @@ export function AddProjectDialog({ open, onClose, onCreated }: AddProjectDialogP
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Defaults to the folder name"
-            maxLength={80}
+            maxLength={MAX_PROJECT_NAME_LENGTH}
             data-testid="project-name-input"
           />
         </div>
@@ -299,7 +302,7 @@ export function EditProjectDialog({ project, onClose, onSaved }: EditProjectDial
             className="input"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            maxLength={80}
+            maxLength={MAX_PROJECT_NAME_LENGTH}
             autoFocus
             data-testid="edit-project-name"
           />

@@ -1,3 +1,7 @@
+import protocol from '../../../../shared/protocol.json';
+
+const { TOKEN_HEADER, TOKEN_META_NAME } = protocol;
+
 export class ApiError extends Error {
   readonly status: number;
 
@@ -9,7 +13,7 @@ export class ApiError extends Error {
 }
 
 export function localToken(): string {
-  const meta = document.querySelector<HTMLMetaElement>('meta[name="devpilot-token"]');
+  const meta = document.querySelector<HTMLMetaElement>(`meta[name="${TOKEN_META_NAME}"]`);
   return meta?.content ?? '';
 }
 
@@ -20,7 +24,7 @@ function sleep(ms: number): Promise<void> {
 export async function apiGet<T>(pathname: string, attempt = 0): Promise<T> {
   const token = localToken();
   const headers: Record<string, string> = { accept: 'application/json' };
-  if (token) headers['x-devpilot-token'] = token;
+  if (token) headers[TOKEN_HEADER] = token;
 
   let response: Response;
   try {
@@ -61,7 +65,7 @@ async function apiSend<T>(
 ): Promise<T> {
   const token = localToken();
   const headers: Record<string, string> = { accept: 'application/json' };
-  if (token) headers['x-devpilot-token'] = token;
+  if (token) headers[TOKEN_HEADER] = token;
   if (body !== undefined) headers['content-type'] = 'application/json';
 
   let response: Response;

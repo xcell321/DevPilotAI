@@ -5,6 +5,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import protocol from '../../shared/protocol.cjs';
 import { createApp } from '../src/app';
 import { loadConfig, type AppConfig } from '../src/config';
 import { openDatabase } from '../src/db';
@@ -17,6 +18,7 @@ import { deriveSessionStatus } from '../src/services/sessionStatus';
 import { reconcileStaleTerminals } from '../src/services/startup';
 import { seedToolProfiles } from '../src/services/toolRegistry';
 
+const { TOKEN_HEADER } = protocol;
 const TOKEN = 'test-token-0123456789abcdef';
 
 let tempDir: string;
@@ -143,6 +145,7 @@ beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'devpilot-sessions-'));
   config = loadConfig({
     DEVPILOT_DB_PATH: path.join(tempDir, 'test.db'),
+    DEVPILOT_RUNTIME_DIR: path.join(tempDir, 'runtime'),
     DEVPILOT_WEB_DIST: path.join(tempDir, 'no-web-build'),
     DEVPILOT_MAX_TERMINALS: '8',
   });
@@ -228,12 +231,41 @@ function authorized(
   url: string,
   target = app,
 ) {
-  return request(target)[method](url).set('x-devpilot-token', TOKEN);
+  return request(target)[method](url).set(TOKEN_HEADER, TOKEN);
 }
 
-async function makeProject(name = 'Runtime Project') {
+async function makeProject(name = 'Runtime Project', initializeGit = false) {
   const directory = path.join(tempDir, name);
   fs.mkdirSync(directory, { recursive: true });
+  if (initializeGit) {
+    const git = spawnSync('git', ['-C', directory, 'init', '--quiet'], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    if (git.status !== 0) {
+      throw new Error(`Could not initialize test Git repository: ${git.stderr}`);
+    }
+    for (const [key, value] of [
+      ['user.name', 'DevPilot Test'],
+      ['user.email', 'devpilot-test@example.invalid'],
+    ]) {
+      const configResult = spawnSync('git', ['-C', directory, 'config', key, value], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      if (configResult.status !== 0) {
+        throw new Error(`Could not configure test Git repository: ${configResult.stderr}`);
+      }
+    }
+    const commit = spawnSync(
+      'git',
+      ['-C', directory, 'commit', '--allow-empty', '--quiet', '-m', 'Initial'],
+      { encoding: 'utf8', windowsHide: true },
+    );
+    if (commit.status !== 0) {
+      throw new Error(`Could not commit test Git repository: ${commit.stderr}`);
+    }
+  }
   const canonical = fs.realpathSync.native(directory);
   const response = await authorized('post', '/api/projects').send({ path: canonical, name });
   expect(response.status).toBe(201);
@@ -323,12 +355,13 @@ describe('session creation contract', () => {
   });
 
   it('uses the configured per-session terminal limit as the server authority', async () => {
-    const project = await makeProject();
+    const project = await makeProject('Runtime Project', true);
     addProfile('limit-a', 'stay');
     addProfile('limit-b', 'stay');
     addProfile('limit-c', 'stay');
     const limitedConfig = loadConfig({
       DEVPILOT_DB_PATH: config.dbPath,
+      DEVPILOT_RUNTIME_DIR: config.runtimeDir,
       DEVPILOT_WEB_DIST: config.webDist,
       DEVPILOT_MAX_TERMINALS_PER_SESSION: '2',
     });
@@ -358,7 +391,7 @@ describe('session creation contract', () => {
     });
     expect(accepted.status).toBe(201);
     await authorized('post', `/api/sessions/${accepted.body.session.id}/stop`, limitedApp);
-  });
+  }, 20000);
 
   it('refuses unknown projects and unknown CLI profiles without saving a session', async () => {
     const unknownProject = await authorized('post', '/api/sessions').send({
@@ -507,7 +540,7 @@ describe('session lifecycle', () => {
   });
 
   it('stops every live terminal from the session endpoint', async () => {
-    const project = await makeProject();
+    const project = await makeProject('Runtime Project', true);
     addProfile('test-cap-a', 'stay');
     addProfile('test-cap-b', 'stay');
     const created = await authorized('post', '/api/sessions').send({
@@ -538,10 +571,10 @@ describe('session lifecycle', () => {
     const idempotent = await authorized('post', `/api/sessions/${sessionId}/stop`);
     expect(idempotent.status).toBe(200);
     expect(idempotent.body.session.status).toBe('stopped');
-  });
+  }, 20000);
 
   it('keeps a partially failed session and records the failed terminal honestly', async () => {
-    const project = await makeProject();
+    const project = await makeProject('Runtime Project', true);
     addProfile('test-stay', 'stay');
     addProfile('test-exit', 'immediate');
     const created = await authorized('post', '/api/sessions').send({
@@ -572,7 +605,7 @@ describe('session lifecycle', () => {
     expect(list.body.sessions).toHaveLength(1);
 
     await authorized('post', `/api/sessions/${sessionId}/stop`);
-  });
+  }, 20000);
 
   it('kills the terminal process tree while a separate sentinel survives', async () => {
     const project = await makeProject();
@@ -644,7 +677,7 @@ describe('session lifecycle', () => {
   });
 
   it('applies the configured global live-terminal cap without dropping the session', async () => {
-    const project = await makeProject();
+    const project = await makeProject('Runtime Project', true);
     addProfile('test-cap-a', 'stay');
     addProfile('test-cap-b', 'stay');
     const capped = new ProcessManager({
@@ -688,7 +721,7 @@ describe('session lifecycle', () => {
     expect(session.terminals).toHaveLength(2);
 
     await authorized('post', `/api/sessions/${sessionId}/stop`, cappedApp);
-  });
+  }, 20000);
 
   it('shuts down owned processes without using SQLite PIDs', async () => {
     const project = await makeProject();
@@ -857,6 +890,126 @@ describe('launch readiness and project safety', () => {
   });
 });
 
+describe('isolated agent workspaces', () => {
+  it('launches each CLI in a distinct worktree and preserves work across restart', async () => {
+    const project = await makeProject('Runtime Project', true);
+    addProfile('workspace-agent-a', 'stay');
+    addProfile('workspace-agent-b', 'stay');
+
+    const created = await authorized('post', '/api/sessions').send({
+      projectId: project.id,
+      mode: 'custom',
+      toolIds: ['workspace-agent-a', 'workspace-agent-b'],
+    });
+    expect(created.status).toBe(201);
+    const sessionId = created.body.session.id as string;
+    const [terminalA, terminalB] = created.body.session.terminals as Array<{
+      id: string;
+      workspace: { path: string; workingDirectory: string; status: string };
+    }>;
+
+    expect(terminalA.workspace.status).toBe('ready');
+    expect(terminalB.workspace.status).toBe('ready');
+    expect(terminalA.workspace.path).not.toBe(terminalB.workspace.path);
+    expect(terminalA.workspace.workingDirectory).not.toBe(
+      terminalB.workspace.workingDirectory,
+    );
+
+    await waitUntil(async () => {
+      const session = await getSession(sessionId);
+      return session.terminals.every(
+        (terminal: { status: string }) => terminal.status === 'running',
+      );
+    }, 'Both isolated CLI processes did not reach running');
+
+    const evidenceA = JSON.parse(fs.readFileSync(evidenceFor('workspace-agent-a'), 'utf8')) as {
+      cwd: string;
+      pid: number;
+    };
+    const evidenceB = JSON.parse(fs.readFileSync(evidenceFor('workspace-agent-b'), 'utf8')) as {
+      cwd: string;
+      pid: number;
+    };
+    expect(evidenceA.cwd).toBe(terminalA.workspace.workingDirectory);
+    expect(evidenceB.cwd).toBe(terminalB.workspace.workingDirectory);
+
+    const sharedName = 'same-name.txt';
+    fs.writeFileSync(path.join(terminalA.workspace.workingDirectory, sharedName), 'agent A');
+    fs.writeFileSync(path.join(terminalB.workspace.workingDirectory, sharedName), 'agent B');
+    fs.writeFileSync(path.join(terminalA.workspace.workingDirectory, 'agent-a.txt'), 'A');
+    fs.writeFileSync(path.join(terminalB.workspace.workingDirectory, 'agent-b.txt'), 'B');
+    expect(
+      fs.readFileSync(path.join(terminalA.workspace.workingDirectory, sharedName), 'utf8'),
+    ).toBe('agent A');
+    expect(
+      fs.readFileSync(path.join(terminalB.workspace.workingDirectory, sharedName), 'utf8'),
+    ).toBe('agent B');
+
+    const mainStatus = spawnSync('git', ['-C', project.path, 'status', '--porcelain'], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    expect(mainStatus.status).toBe(0);
+    expect(mainStatus.stdout.trim()).toBe('');
+
+    const terminalAId = terminalA.id;
+    const restarted = await authorized('post', `/api/terminals/${terminalAId}/restart`);
+    expect(restarted.status).toBe(200);
+    await waitUntil(async () => {
+      const session = await getSession(sessionId);
+      return session.terminals.find(
+        (terminal: { id: string }) => terminal.id === terminalAId,
+      )?.status === 'running';
+    }, 'Restarted isolated CLI process did not reach running');
+
+    const afterRestart = (await getSession(sessionId)).terminals.find(
+      (terminal: { id: string }) => terminal.id === terminalAId,
+    );
+    expect(afterRestart.workspace.path).toBe(terminalA.workspace.path);
+    expect(
+      fs.readFileSync(path.join(terminalA.workspace.workingDirectory, sharedName), 'utf8'),
+    ).toBe('agent A');
+    await authorized('post', `/api/sessions/${sessionId}/stop`);
+  }, 30000);
+
+  it('refuses multi-CLI sessions outside a Git repository without launching processes', async () => {
+    const project = await makeProject('Non-Git Project', false);
+    addProfile('workspace-non-git-a', 'stay');
+    addProfile('workspace-non-git-b', 'stay');
+
+    const response = await authorized('post', '/api/sessions').send({
+      projectId: project.id,
+      mode: 'custom',
+      toolIds: ['workspace-non-git-a', 'workspace-non-git-b'],
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe('project_not_git');
+    expect(db.prepare('SELECT COUNT(*) AS count FROM sessions').get()).toEqual({ count: 0 });
+    expect(manager.liveCount).toBe(0);
+  });
+
+  it('refuses multi-CLI sessions when the main repository has uncommitted changes', async () => {
+    const project = await makeProject('Dirty Git Project', true);
+    const userChange = path.join(project.path, 'user-change.txt');
+    fs.writeFileSync(userChange, 'preserve this change');
+    addProfile('workspace-dirty-a', 'stay');
+    addProfile('workspace-dirty-b', 'stay');
+
+    const response = await authorized('post', '/api/sessions').send({
+      projectId: project.id,
+      mode: 'custom',
+      toolIds: ['workspace-dirty-a', 'workspace-dirty-b'],
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe('project_git_dirty');
+    expect(fs.readFileSync(userChange, 'utf8')).toBe('preserve this change');
+    expect(db.prepare('SELECT COUNT(*) AS count FROM sessions').get()).toEqual({ count: 0 });
+    expect(manager.liveCount).toBe(0);
+  });
+});
+
 describe('startup reconciliation and migration', () => {
   it('marks stale live rows stopped and unavailable without killing their stored PID', async () => {
     const project = await makeProject();
@@ -957,7 +1110,7 @@ describe('startup reconciliation and migration', () => {
     legacy.close();
 
     const migrated = openDatabase(legacyPath);
-    expect(migrated.pragma('user_version', { simple: true })).toBe(4);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(5);
     const tools = migrated
       .prepare('SELECT id, launch_verified FROM tool_profiles ORDER BY id')
       .all() as { id: string; launch_verified: number }[];

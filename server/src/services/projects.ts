@@ -1,23 +1,14 @@
 import crypto from 'node:crypto';
+import type { Project } from '../../../shared/api-types.cjs';
 import type { Db } from '../db/types';
 import { ApiError } from '../errors';
 import {
   deriveProjectName,
   getProjectPathStatus,
   validateProjectPath,
-  type ProjectPathStatus,
 } from './projectPaths';
 
-export interface ProjectSummary {
-  id: string;
-  name: string;
-  path: string;
-  createdAt: string;
-  updatedAt: string;
-  lastUsedAt: string | null;
-  sessionsCount: number;
-  pathStatus: ProjectPathStatus;
-}
+export type ProjectSummary = Project;
 
 interface ProjectRow {
   id: string;
@@ -56,8 +47,10 @@ async function toSummary(row: ProjectRow): Promise<ProjectSummary> {
   };
 }
 
+const MAX_SEARCH_QUERY_LENGTH = 100;
+
 export async function listProjects(db: Db, query: string | undefined): Promise<ProjectSummary[]> {
-  const search = (query ?? '').trim().slice(0, 100);
+  const search = (query ?? '').trim().slice(0, MAX_SEARCH_QUERY_LENGTH);
   const rows = search
     ? (db
         .prepare(

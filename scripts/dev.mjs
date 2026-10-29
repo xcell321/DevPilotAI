@@ -30,6 +30,7 @@ function getFreePort() {
 async function waitForRuntimeFile(file, expectedPort, timeoutMs = 25000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
+    if (shuttingDown) throw new Error('Dev runner stopped before the server was ready.');
     try {
       const runtime = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (runtime.port === expectedPort) return runtime;
@@ -100,6 +101,13 @@ function shutdown(exitCode = 0) {
   process.exitCode = exitCode;
 }
 
+server.on('error', (error) => {
+  if (!shuttingDown) {
+    console.error(`\nDevPilot server failed to start: ${error.message}`);
+    shutdown(1);
+  }
+});
+
 server.on('exit', (code) => {
   if (!shuttingDown) {
     console.error(`\nDevPilot server stopped (exit ${code ?? 'unknown'}).`);
@@ -117,6 +125,13 @@ try {
     DEVPILOT_SERVER_ORIGIN: runtime.origin,
     DEVPILOT_WEB_PORT: String(webPort),
     DEVPILOT_RUNTIME_DIR: runtimeDir,
+  });
+
+  web.on('error', (error) => {
+    if (!shuttingDown) {
+      console.error(`\nDevPilot web server failed to start: ${error.message}`);
+      shutdown(1);
+    }
   });
 
   web.on('exit', (code) => {

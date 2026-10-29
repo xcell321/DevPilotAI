@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('node:path');
+const { RUNTIME_FILE_NAME } = require('./protocol.cjs');
 
 const DEFAULT_RUNTIME_DIR_NAME = '.devpilot';
 
@@ -10,7 +11,7 @@ function resolveRuntimeDir(root, env = process.env) {
 }
 
 function runtimeFileFor(root, env = process.env) {
-  return path.join(resolveRuntimeDir(root, env), 'server.json');
+  return path.join(resolveRuntimeDir(root, env), RUNTIME_FILE_NAME);
 }
 
 module.exports = {

@@ -1,13 +1,17 @@
 import type { Db } from '../db/types';
 import { ApiError } from '../errors';
+import { DEFAULT_MAX_TERMINALS, MAX_TERMINAL_INPUT_BYTES } from '../limits';
 import { killProcessTree, terminalEnv } from './processUtils';
 import type { OwnedProcess, ProcessExit, ProcessLauncher } from './processLauncher';
 import { refreshSessionStatus } from './sessionStatus';
 
 const DEFAULT_COLS = 120;
 const DEFAULT_ROWS = 30;
+const MIN_COLS = 2;
+const MAX_COLS = 500;
+const MIN_ROWS = 1;
+const MAX_ROWS = 200;
 const OUTPUT_LIMIT = 256 * 1024;
-const INPUT_LIMIT = 64 * 1024;
 
 export interface LaunchSpec {
   terminalId: string;
@@ -163,7 +167,7 @@ export class ProcessManager {
   constructor(options: ProcessManagerOptions) {
     this.db = options.db;
     this.launcher = options.launcher;
-    this.maxLive = options.maxLive ?? 8;
+    this.maxLive = options.maxLive ?? DEFAULT_MAX_TERMINALS;
     this.confirmMs = options.confirmMs ?? 1200;
     this.startingTimeoutMs = options.startingTimeoutMs ?? 10000;
     this.stopTimeoutMs = options.stopTimeoutMs ?? 1000;
@@ -279,7 +283,7 @@ export class ProcessManager {
           throw new ApiError(409, 'terminal_not_running', 'The terminal is not running.');
         }
         if (typeof data !== 'string' || data.length === 0) return;
-        if (data.length > INPUT_LIMIT) {
+        if (data.length > MAX_TERMINAL_INPUT_BYTES) {
           throw new ApiError(400, 'terminal_input_too_large', 'Terminal input is too large.');
         }
         live.process.write(data);
@@ -290,10 +294,10 @@ export class ProcessManager {
           throw new ApiError(409, 'terminal_not_running', 'The terminal is not running.');
         }
         const boundedCols = Number.isFinite(cols)
-          ? Math.min(500, Math.max(2, Math.floor(cols)))
+          ? Math.min(MAX_COLS, Math.max(MIN_COLS, Math.floor(cols)))
           : DEFAULT_COLS;
         const boundedRows = Number.isFinite(rows)
-          ? Math.min(200, Math.max(1, Math.floor(rows)))
+          ? Math.min(MAX_ROWS, Math.max(MIN_ROWS, Math.floor(rows)))
           : DEFAULT_ROWS;
         live.process.resize(boundedCols, boundedRows);
         live.cols = boundedCols;
@@ -660,13 +664,14 @@ export class ProcessManager {
   private withTerminalLock<T>(terminalId: string, operation: () => Promise<T>): Promise<T> {
     const previous = this.locks.get(terminalId) ?? Promise.resolve();
     const run = previous.catch(() => undefined).then(operation);
-    this.locks.set(
-      terminalId,
-      run.then(
-        () => undefined,
-        () => undefined,
-      ),
+    const settled = run.then(
+      () => undefined,
+      () => undefined,
     );
+    this.locks.set(terminalId, settled);
+    void settled.then(() => {
+      if (this.locks.get(terminalId) === settled) this.locks.delete(terminalId);
+    });
     return run;
   }
 }

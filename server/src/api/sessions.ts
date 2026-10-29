@@ -1,18 +1,25 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { ApiError, sendApiError } from '../errors';
+import { sendApiError } from '../errors';
+import { MAX_ID_LENGTH, MAX_SESSION_TITLE_LENGTH } from '../limits';
 import type { SessionService } from '../services/sessions';
+import { parseBody } from './parseBody';
 
 function createSessionSchema(maxTerminalsPerSession: number) {
   return z
     .object({
-      projectId: z.string().trim().min(1, 'Select a project.').max(100),
+      projectId: z.string().trim().min(1, 'Select a project.').max(MAX_ID_LENGTH),
       mode: z.enum(['quick', 'custom']),
       toolIds: z
-        .array(z.string().trim().min(1).max(100))
+        .array(z.string().trim().min(1).max(MAX_ID_LENGTH))
         .max(maxTerminalsPerSession, 'Too many CLI profiles selected.')
         .optional(),
-      title: z.string().trim().min(1, 'Session title cannot be empty.').max(120).optional(),
+      title: z
+        .string()
+        .trim()
+        .min(1, 'Session title cannot be empty.')
+        .max(MAX_SESSION_TITLE_LENGTH)
+        .optional(),
     })
     .strict()
     .superRefine((value, context) => {
@@ -40,21 +47,6 @@ function createSessionSchema(maxTerminalsPerSession: number) {
     });
 }
 
-function parseCreateBody(
-  body: unknown,
-  schema: ReturnType<typeof createSessionSchema>,
-): z.infer<typeof schema> {
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    throw new ApiError(
-      400,
-      'invalid_request',
-      parsed.error.issues[0]?.message ?? 'Invalid request.',
-    );
-  }
-  return parsed.data;
-}
-
 export function createSessionsRouter(service: SessionService): Router {
   const router = Router();
   const createSessionSchemaWithLimit = createSessionSchema(service.maxTerminalsPerSession);
@@ -66,7 +58,7 @@ export function createSessionsRouter(service: SessionService): Router {
   router.post('/', async (req, res) => {
     try {
       const session = await service.create(
-        parseCreateBody(req.body, createSessionSchemaWithLimit),
+        parseBody(createSessionSchemaWithLimit, req.body),
       );
       res.status(201).json({ session });
     } catch (error) {

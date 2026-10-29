@@ -97,10 +97,31 @@ describe('tool executable discovery', () => {
     expect(result).toEqual({ command: executable, source: 'known-location' });
   });
 
+  it('finds the GitHub Copilot CLI on PATH', () => {
+    const executable = writeFile(path.join(tempDir, 'bin', 'copilot.exe'));
+    const result = resolveToolCommand(
+      'copilot',
+      isolatedEnv({ PATH: path.dirname(executable) }),
+    );
+
+    expect(result).toEqual({ command: executable, source: 'path' });
+  });
+
   it('returns no command when nothing is configured or installed', () => {
     const result = resolveToolCommand('freebuff', isolatedEnv());
 
     expect(result).toEqual({ command: '', source: 'missing' });
+  });
+
+  it('finds the official Antigravity CLI installation location', () => {
+    const executable = writeFile(path.join(tempDir, 'localappdata', 'agy', 'bin', 'agy.exe'));
+
+    const result = resolveToolCommand(
+      'antigravity',
+      isolatedEnv({ LOCALAPPDATA: path.join(tempDir, 'localappdata') }),
+    );
+
+    expect(result).toEqual({ command: executable, source: 'known-location' });
   });
 
   it('does not use Windows-only installation locations on POSIX', () => {

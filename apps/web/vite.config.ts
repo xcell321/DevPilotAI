@@ -3,9 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import protocol from '../../shared/protocol.cjs';
 import { runtimeFileFor } from '../../shared/runtime-paths.cjs';
 import { createDevLogger } from './devProxyLogger.ts';
 
+const { TOKEN_HEADER, TOKEN_META_NAME } = protocol;
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(currentDir, '..', '..');
 const runtimeFile = runtimeFileFor(repoRoot);
@@ -35,7 +37,7 @@ function devTokenPlugin() {
       if (!token) return html;
       return html.replace(
         '</head>',
-        `  <meta name="devpilot-token" content="${token}" />\n  </head>`,
+        `  <meta name="${TOKEN_META_NAME}" content="${token}" />\n  </head>`,
       );
     },
   };
@@ -65,7 +67,7 @@ export default defineConfig(({ command }) => {
                   'proxyReq',
                   (proxyReq: { setHeader: (name: string, value: string) => void }) => {
                     const token = readLocalToken();
-                    if (token) proxyReq.setHeader('x-devpilot-token', token);
+                    if (token) proxyReq.setHeader(TOKEN_HEADER, token);
                   },
                 );
               },

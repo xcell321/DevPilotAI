@@ -1,17 +1,14 @@
+import type {
+  TerminalLayout,
+  WorkspacePreferences,
+} from '../../../shared/api-types.cjs';
+import { WORKSPACE_PREFERENCES_VERSION } from '../../../shared/contracts.cjs';
 import type { Db } from '../db/types';
 
+export { WORKSPACE_PREFERENCES_VERSION };
+export type { TerminalLayout, WorkspacePreferences };
+
 export const WORKSPACE_PREFERENCES_KEY = 'workspace.preferences';
-export const WORKSPACE_PREFERENCES_VERSION = 1;
-
-export type TerminalLayout = 'auto' | 'single';
-
-export interface WorkspacePreferences {
-  version: typeof WORKSPACE_PREFERENCES_VERSION;
-  selectedProjectId: string | null;
-  selectedSessionId: string | null;
-  maximizedTerminalId: string | null;
-  terminalLayout: TerminalLayout;
-}
 
 export interface WorkspacePreferencesPatch {
   version: typeof WORKSPACE_PREFERENCES_VERSION;

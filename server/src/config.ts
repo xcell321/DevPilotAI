@@ -5,7 +5,11 @@ import {
   resolveRuntimeDir,
   runtimeFileFor,
 } from '../../shared/runtime-paths.cjs';
-import { DEFAULT_MAX_TERMINALS_PER_SESSION } from './limits';
+import {
+  DEFAULT_MAX_TERMINALS,
+  DEFAULT_MAX_TERMINALS_PER_SESSION,
+  MAX_TERMINALS,
+} from './limits';
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 
@@ -23,17 +27,22 @@ export interface AppConfig {
 }
 
 const envSchema = z.object({
-  DEVPILOT_HOST: z.string().min(1).default('127.0.0.1'),
+  DEVPILOT_HOST: z.string().trim().min(1).default('127.0.0.1'),
   DEVPILOT_PORT: z.coerce.number().int().min(0).max(65535).default(0),
   DEVPILOT_DB_PATH: z.string().min(1).optional(),
   DEVPILOT_WEB_DIST: z.string().min(1).optional(),
   DEVPILOT_RUNTIME_DIR: z.string().min(1).optional(),
-  DEVPILOT_MAX_TERMINALS: z.coerce.number().int().min(1).max(32).default(8),
+  DEVPILOT_MAX_TERMINALS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_TERMINALS)
+    .default(DEFAULT_MAX_TERMINALS),
   DEVPILOT_MAX_TERMINALS_PER_SESSION: z.coerce
     .number()
     .int()
     .min(1)
-    .max(32)
+    .max(MAX_TERMINALS)
     .default(DEFAULT_MAX_TERMINALS_PER_SESSION),
 });
 
@@ -41,6 +50,15 @@ export const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']
 
 export function isLoopbackHost(host: string): boolean {
   return LOOPBACK_HOSTS.has(host.toLowerCase());
+}
+
+export function normalizeListenHost(host: string): string {
+  return host === '[::1]' ? '::1' : host;
+}
+
+export function formatHostForUrl(host: string): string {
+  const normalized = normalizeListenHost(host);
+  return normalized.includes(':') ? `[${normalized}]` : normalized;
 }
 
 function readServerVersion(): string {

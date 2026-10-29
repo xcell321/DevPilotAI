@@ -1,6 +1,9 @@
 import { Database, KeyRound, Palette, Server, ShieldCheck } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
+import protocol from '../../../../shared/protocol.json';
 import type { AppOutletContext } from '../components/AppLayout';
+
+const { RUNTIME_FILE_NAME, TOKEN_META_NAME } = protocol;
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
@@ -63,14 +66,14 @@ export function SettingsPage() {
           <p>
             In development, Vite proxies <span className="mono text-xs text-ink">/api</span> and
             injects the token from the server runtime file (
-            <span className="mono text-xs text-ink">server.json</span> in{' '}
+            <span className="mono text-xs text-ink">{RUNTIME_FILE_NAME}</span> in{' '}
             <span className="mono text-xs text-ink">DEVPILOT_RUNTIME_DIR</span>, or{' '}
             <span className="mono text-xs text-ink">.devpilot</span> by default). The browser never
             reads that file.
           </p>
           <p>
             In a packaged build, the backend injects a{' '}
-            <span className="mono text-xs text-ink">devpilot-token</span> meta tag into the served
+            <span className="mono text-xs text-ink">{TOKEN_META_NAME}</span> meta tag into the served
             HTML. The token is regenerated on every backend startup.
           </p>
         </div>

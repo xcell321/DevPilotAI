@@ -1,22 +1,26 @@
+import type { ToolProfile, ToolStatus } from '../../../shared/api-types.cjs';
 import type { Db } from '../db/types';
-import { TOOL_DEFINITIONS } from './toolCatalog';
-import { isExecutableFile, resolveToolCommand } from './toolDiscovery';
+import { ApiError } from '../errors';
+import { TOOL_DEFINITIONS, getToolDefinition, verifiedProbeArgs } from './toolCatalog';
+import { isExecutableFile } from './executable';
+import { probeExecutable } from './toolProbe';
+import { resolveToolCommand } from './toolDiscovery';
 
-export type ToolStatus = 'available' | 'missing' | 'unknown' | 'unverified';
+export type { ToolProfile, ToolStatus };
 
-export interface ToolProfile {
-  id: string;
-  displayName: string;
-  command: string;
-  fixedArgs: string[];
-  enabled: boolean;
-  defaultOnQuickStart: boolean;
-  launchVerified: boolean;
-  launchable: boolean;
-  launchReason: string | null;
-  lastStatus: ToolStatus;
-  lastCheckedAt: string | null;
-  notes: string | null;
+const toolVersionCache = new Map<string, string>();
+
+export function extractVersionFromOutput(output: string): string {
+  const line = output.trim().split(/\r?\n/)[0]?.trim() ?? '';
+  return line.slice(0, 100);
+}
+
+export function getToolVersion(id: string): string | null {
+  return toolVersionCache.get(id) ?? null;
+}
+
+export function setToolVersion(id: string, version: string): void {
+  toolVersionCache.set(id, version);
 }
 
 interface ToolProfileRow {
@@ -98,6 +102,14 @@ export function seedToolProfiles(db: Db, env: NodeJS.ProcessEnv = process.env): 
       @notes
     )
     ON CONFLICT(id) DO UPDATE SET
+      display_name = excluded.display_name,
+      launch_verified = excluded.launch_verified,
+      notes = excluded.notes,
+      enabled = CASE
+        WHEN excluded.launch_verified = 0 THEN 0
+        WHEN tool_profiles.launch_verified = 0 AND excluded.launch_verified = 1 THEN excluded.enabled
+        ELSE tool_profiles.enabled
+      END,
       command = CASE
         WHEN tool_profiles.command_source = 'manual' THEN tool_profiles.command
         ELSE excluded.command
@@ -157,6 +169,7 @@ function launchReasonFor(row: ToolProfileRow): string | null {
 
 function mapToolRow(row: ToolProfileRow): ToolProfile {
   const launchReason = launchReasonFor(row);
+  const def = getToolDefinition(row.id);
   return {
     id: row.id,
     displayName: row.display_name,
@@ -170,6 +183,8 @@ function mapToolRow(row: ToolProfileRow): ToolProfile {
     lastStatus: row.last_status,
     lastCheckedAt: row.last_checked_at,
     notes: row.notes,
+    authGuidance: def?.authGuidance ?? null,
+    version: toolVersionCache.get(row.id) ?? null,
   };
 }
 
@@ -204,8 +219,50 @@ export function updateToolCheck(
   id: string,
   status: ToolStatus,
   checkedAt: string,
+  output?: string,
 ): void {
+  if (output && status === 'available') {
+    const version = extractVersionFromOutput(output);
+    if (version) {
+      toolVersionCache.set(id, version);
+    }
+  }
   db.prepare(
     'UPDATE tool_profiles SET last_status = ?, last_checked_at = ? WHERE id = ?',
   ).run(status, checkedAt, id);
+}
+
+export function setToolEnabled(db: Db, id: string, enabled: boolean): ToolProfile {
+  const tool = getToolProfile(db, id);
+  if (!tool) {
+    throw new ApiError(404, 'tool_not_found', 'CLI profile not found.');
+  }
+  if (enabled && !tool.launchVerified) {
+    throw new ApiError(
+      409,
+      'tool_not_verified',
+      `Cannot enable ${tool.displayName}: interactive launch is not verified.`,
+    );
+  }
+  db.prepare('UPDATE tool_profiles SET enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id);
+  return getToolProfile(db, id)!;
+}
+
+export function warmToolVersions(db: Db): void {
+  const tools = listToolProfiles(db);
+  void Promise.all(
+    tools.map(async (tool) => {
+      if (!tool.command || tool.lastStatus !== 'available') return;
+      const probeArgs = verifiedProbeArgs(tool.id);
+      if (!probeArgs) return;
+      try {
+        const result = await probeExecutable(tool.command, probeArgs, 5000);
+        if (result.status === 'available') {
+          updateToolCheck(db, tool.id, result.status, result.checkedAt, result.output);
+        }
+      } catch {
+        // Non-blocking best-effort background warming
+      }
+    }),
+  );
 }

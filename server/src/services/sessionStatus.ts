@@ -1,21 +1,11 @@
+import type {
+  SessionStatus,
+  TerminalDisplayStatus,
+} from '../../../shared/api-types.cjs';
 import type { Db } from '../db/types';
 
-export type SessionDisplayStatus =
-  | 'created'
-  | 'starting'
-  | 'running'
-  | 'exited'
-  | 'stopped'
-  | 'error'
-  | 'unavailable';
-
-export type TerminalDisplayStatus =
-  | 'starting'
-  | 'running'
-  | 'exited'
-  | 'stopped'
-  | 'error'
-  | 'unavailable';
+export type SessionDisplayStatus = SessionStatus;
+export type { TerminalDisplayStatus };
 
 export interface TerminalStatusRow {
   process_status: string;

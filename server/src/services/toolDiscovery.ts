@@ -1,6 +1,6 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { getToolDefinition } from './toolCatalog';
+import { isExecutableFile } from './executable';
 
 export type ToolCommandSource = 'configured' | 'path' | 'known-location' | 'missing';
 
@@ -11,23 +11,6 @@ export interface ToolCommandResolution {
 
 function pathApiFor(platform: NodeJS.Platform): path.PlatformPath {
   return platform === 'win32' ? path.win32 : path.posix;
-}
-
-export function isExecutableFile(
-  candidate: string,
-  platform: NodeJS.Platform = process.platform,
-): boolean {
-  const pathApi = pathApiFor(platform);
-  if (!pathApi.isAbsolute(candidate)) return false;
-
-  try {
-    const stats = fs.statSync(candidate);
-    if (!stats.isFile()) return false;
-    if (platform !== 'win32') fs.accessSync(candidate, fs.constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function expandKnownPath(template: string, env: NodeJS.ProcessEnv, homeDir: string): string {

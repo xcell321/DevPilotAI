@@ -2,15 +2,16 @@ import type { Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { ApiError } from '../errors';
+import { MAX_TERMINAL_INPUT_BYTES } from '../limits';
 import { isValidToken } from '../security/auth';
 import { isLoopbackHostHeader, isLoopbackOrigin } from '../security/origin';
 import type { ProcessManager, TerminalAttachment } from '../services/processManager';
 import type { SessionService, SessionSummary } from '../services/sessions';
+import { WS_TOKEN_PROTOCOL_PREFIX } from '../../../shared/protocol.cjs';
 
 const TERMINAL_PATH = /^\/ws\/sessions\/([^/]+)\/terminals\/([^/]+)$/;
-export const WS_TOKEN_PROTOCOL_PREFIX = 'devpilot.token.';
+export { WS_TOKEN_PROTOCOL_PREFIX };
 const MAX_MESSAGE_BYTES = 128 * 1024;
-const MAX_INPUT_BYTES = 64 * 1024;
 const MAX_SOCKET_BACKLOG_BYTES = 1024 * 1024;
 const OUTPUT_CHUNK_BYTES = 64 * 1024;
 const HEARTBEAT_MS = 30_000;
@@ -321,7 +322,7 @@ export function attachTerminalBridge(options: TerminalBridgeOptions): TerminalBr
 
     client.on('message', (raw, isBinary) => {
       const buffer = toBuffer(raw);
-      if (buffer.length > MAX_INPUT_BYTES) {
+      if (buffer.length > MAX_TERMINAL_INPUT_BYTES) {
         sendJson(client, {
           type: 'error',
           code: 'message_too_large',
@@ -368,7 +369,7 @@ export function attachTerminalBridge(options: TerminalBridgeOptions): TerminalBr
           });
           return;
         }
-        if (Buffer.byteLength(payload.data, 'utf8') > MAX_INPUT_BYTES) {
+        if (Buffer.byteLength(payload.data, 'utf8') > MAX_TERMINAL_INPUT_BYTES) {
           sendJson(client, {
             type: 'error',
             code: 'input_too_large',

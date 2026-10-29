@@ -4,12 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { chromium } from 'playwright-core';
+import protocol from '../../shared/protocol.cjs';
 
+const { RUNTIME_FILE_NAME, TOKEN_HEADER, TOKEN_META_NAME } = protocol;
 const root = path.resolve(import.meta.dirname, '..', '..');
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devpilot-production-e2e-'));
 const dbPath = path.join(tempRoot, 'production.db');
 const runtimeDir = path.join(tempRoot, 'runtime');
-const runtimeFile = path.join(runtimeDir, 'server.json');
+const runtimeFile = path.join(runtimeDir, RUNTIME_FILE_NAME);
 const projectDir = path.join(tempRoot, 'Production Terminal Project');
 const fixtureScript = path.join(tempRoot, 'production-terminal-fixture.cjs');
 const fixtureEvidence = path.join(tempRoot, 'production-terminal-evidence.json');
@@ -117,7 +119,7 @@ try {
   const headers = {
     accept: 'application/json',
     'content-type': 'application/json',
-    'x-devpilot-token': runtime.token,
+    [TOKEN_HEADER]: runtime.token,
   };
   const api = async (pathname, options = {}) => {
     const response = await fetch(`${runtime.origin}${pathname}`, { ...options, headers });
@@ -132,7 +134,7 @@ try {
   assert(indexResponse.ok, 'Production server did not serve the built web app');
   const indexHtml = await indexResponse.text();
   assert(
-    indexHtml.includes('name="devpilot-token"'),
+    indexHtml.includes(`name="${TOKEN_META_NAME}"`),
     'Production HTML does not carry the local WebSocket token injection',
   );
 
@@ -196,7 +198,8 @@ try {
     waitUntil: 'domcontentloaded',
   });
   const browserToken = await page.evaluate(
-    () => document.querySelector('meta[name="devpilot-token"]')?.getAttribute('content'),
+    (metaName) => document.querySelector(`meta[name="${metaName}"]`)?.getAttribute('content'),
+    TOKEN_META_NAME,
   );
   assert(browserToken === runtime.token, 'Browser token does not match the running server token');
   await page.getByTestId(`terminal-panel-${terminalId}`).waitFor({
@@ -277,7 +280,10 @@ try {
   if (page) {
     console.error(`Page URL: ${page.url()}`);
     const metaToken = await page
-      .evaluate(() => document.querySelector('meta[name="devpilot-token"]')?.getAttribute('content'))
+      .evaluate(
+        (metaName) => document.querySelector(`meta[name="${metaName}"]`)?.getAttribute('content'),
+        TOKEN_META_NAME,
+      )
       .catch(() => 'unavailable');
     console.error(`Meta token: ${metaToken}`);
     const bodyText = await page.locator('body').innerText().catch(() => '');

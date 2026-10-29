@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type { RequestHandler } from 'express';
+import { TOKEN_HEADER } from '../../../shared/protocol.cjs';
 
 export function createToken(): string {
   return crypto.randomBytes(32).toString('hex');
@@ -18,7 +19,7 @@ export function isValidToken(provided: string | null | undefined, token: string)
 
 export function requireToken(token: string): RequestHandler {
   return (req, res, next) => {
-    const provided = req.get('x-devpilot-token');
+    const provided = req.get(TOKEN_HEADER);
     if (!isValidToken(provided, token)) {
       res.status(401).json({
         error: {

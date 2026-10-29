@@ -1,8 +1,11 @@
+import contracts from '../../../../shared/contracts.json';
 import { apiGet, apiPatch } from './api';
 import type { TerminalLayout, WorkspacePreferences } from './types';
 
+const { WORKSPACE_PREFERENCES_VERSION } = contracts;
+
 export const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
-  version: 1,
+  version: WORKSPACE_PREFERENCES_VERSION as WorkspacePreferences['version'],
   selectedProjectId: null,
   selectedSessionId: null,
   maximizedTerminalId: null,
@@ -32,7 +35,7 @@ export async function saveWorkspacePreferences(
 ): Promise<WorkspacePreferences> {
   const result = await apiPatch<{ preferences: WorkspacePreferences }>(
     '/api/settings/workspace',
-    { version: 1, ...patch },
+    { version: WORKSPACE_PREFERENCES_VERSION, ...patch },
   );
   return result.preferences;
 }

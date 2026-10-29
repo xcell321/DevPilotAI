@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 
-const ENV_KEYS = [
+const BASE_ENV_KEYS = [
   'PATH',
   'PATHEXT',
   'SystemRoot',
@@ -27,6 +27,9 @@ const ENV_KEYS = [
   'PROCESSOR_ARCHITECTURE',
   'OS',
   'LANG',
+];
+
+const CLI_ENV_KEYS = [
   'ANTHROPIC_API_KEY',
   'ANTHROPIC_AUTH_TOKEN',
   'ANTHROPIC_BASE_URL',
@@ -36,7 +39,7 @@ const ENV_KEYS = [
 
 export function sanitizedEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
-  for (const key of ENV_KEYS) {
+  for (const key of BASE_ENV_KEYS) {
     const value = process.env[key];
     if (value !== undefined) env[key] = value;
   }
@@ -52,6 +55,10 @@ export function terminalEnv(): Record<string, string> {
     sanitizedEnv({ TERM: 'xterm-256color', COLORTERM: 'truecolor' }),
   )) {
     if (typeof value === 'string') env[key] = value;
+  }
+  for (const key of CLI_ENV_KEYS) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
   }
   return env;
 }

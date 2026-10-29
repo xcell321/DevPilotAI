@@ -36,40 +36,61 @@ export function pickFolder(): Promise<string> {
   pickerInFlight = true;
 
   return new Promise<string>((resolve, reject) => {
-    const child = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-STA', '-Command', PICKER_SCRIPT],
-      {
-        cwd: os.tmpdir(),
-        env: sanitizedEnv(),
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      },
-    );
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(
+        'powershell.exe',
+        ['-NoProfile', '-STA', '-Command', PICKER_SCRIPT],
+        {
+          cwd: os.tmpdir(),
+          env: sanitizedEnv(),
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
+    } catch {
+      pickerInFlight = false;
+      reject(
+        new ApiError(
+          500,
+          'folder_picker_failed',
+          'Could not open the Windows folder dialog. Enter the path manually.',
+        ),
+      );
+      return;
+    }
 
     let stdout = '';
     let stderr = '';
     let settled = false;
     let timedOut = false;
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      killProcessTree(child.pid);
-    }, PICKER_TIMEOUT_MS);
+    let timer: NodeJS.Timeout | null = null;
 
     const finish = (error: ApiError | null, value?: string) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       pickerInFlight = false;
       if (error) reject(error);
       else resolve(value ?? '');
     };
 
-    child.stdout.on('data', (data: Buffer) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      killProcessTree(child.pid);
+      finish(
+        new ApiError(
+          504,
+          'folder_picker_timeout',
+          'The folder dialog timed out. Enter the path manually.',
+        ),
+      );
+    }, PICKER_TIMEOUT_MS);
+
+    child.stdout?.on('data', (data: Buffer) => {
       if (stdout.length < MAX_STDERR_BYTES) stdout += data.toString('utf8');
     });
-    child.stderr.on('data', (data: Buffer) => {
+    child.stderr?.on('data', (data: Buffer) => {
       if (stderr.length < MAX_STDERR_BYTES) stderr += data.toString('utf8');
     });
 

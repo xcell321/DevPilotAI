@@ -4,6 +4,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import protocol from '../../shared/protocol.cjs';
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { openDatabase, runMigrations } from '../src/db';
@@ -12,6 +13,7 @@ import type { Db } from '../src/db/types';
 import { seedToolProfiles } from '../src/services/toolRegistry';
 import { probeExecutable } from '../src/services/toolProbe';
 
+const { RUNTIME_FILE_NAME, TOKEN_HEADER, TOKEN_META_NAME } = protocol;
 const TOKEN = 'test-token-0123456789abcdef';
 
 let tempDir: string;
@@ -40,7 +42,7 @@ afterEach(() => {
 });
 
 function authorized(method: 'get' | 'post' | 'patch' | 'delete', url: string) {
-  return request(app)[method](url).set('x-devpilot-token', TOKEN);
+  return request(app)[method](url).set(TOKEN_HEADER, TOKEN);
 }
 
 function makeProjectDir(name = 'Café 日本語 Project'): string {
@@ -63,7 +65,7 @@ describe('health', () => {
     expect(response.body.status).toBe('ok');
     expect(response.body.app.name).toBe('DevPilot AI');
     expect(response.body.terminalSupport.status).toBe('available');
-    expect(response.body.database.schemaVersion).toBe(4);
+    expect(response.body.database.schemaVersion).toBe(5);
     expect(JSON.stringify(response.body)).not.toContain(TOKEN);
   });
 
@@ -89,7 +91,7 @@ describe('local auth', () => {
     const response = await authorized('get', '/api/tools');
 
     expect(response.status).toBe(200);
-    expect(response.body.tools).toHaveLength(4);
+    expect(response.body.tools).toHaveLength(5);
     expect(JSON.stringify(response.body)).not.toContain(TOKEN);
   });
 
@@ -191,16 +193,19 @@ describe('seeded tool profiles', () => {
     expect(tools.opencode?.launchVerified).toBe(false);
     expect(tools.opencode?.launchable).toBe(false);
     expect(tools.opencode?.launchReason).toContain('Disabled');
-    expect(tools.opencode?.notes).toContain('blank');
+    expect(tools.opencode?.notes).toContain('renders in xterm.js');
 
-    expect(tools.freebuff?.enabled).toBe(false);
-    expect(tools.freebuff?.launchable).toBe(false);
-    expect(tools.freebuff?.notes).toContain('not verified');
+    expect(tools.freebuff?.enabled).toBe(true);
+    expect(tools.freebuff?.launchVerified).toBe(true);
+    expect(tools.freebuff?.notes).toContain('Freebuff');
 
-    expect(tools.antigravity?.command).toBe('');
-    expect(tools.antigravity?.enabled).toBe(false);
-    expect(tools.antigravity?.launchable).toBe(false);
-    expect(tools.antigravity?.lastStatus).toBe('unverified');
+    if (tools.antigravity?.command) {
+      expect(['available', 'missing']).toContain(tools.antigravity.lastStatus);
+    } else {
+      expect(tools.antigravity?.lastStatus).toBe('unverified');
+    }
+    expect(tools.antigravity?.enabled).toBe(true);
+    expect(tools.antigravity?.launchVerified).toBe(true);
   });
 });
 
@@ -212,17 +217,17 @@ describe('overview', () => {
     expect(response.body.counts).toEqual({
       projects: 0,
       sessions: 0,
-      toolProfiles: 4,
-      enabledToolProfiles: 1,
+      toolProfiles: 5,
+      enabledToolProfiles: 4,
       runningTerminals: 0,
     });
     expect(response.body.limits).toEqual({ maxTerminalsPerSession: 4 });
-    expect(response.body.tools).toHaveLength(4);
+    expect(response.body.tools).toHaveLength(5);
   });
 });
 
 describe('database schema and migrations', () => {
-  it('creates the five plan tables plus the schema version table', () => {
+  it('creates the application tables and schema version table', () => {
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
       .all()
@@ -231,6 +236,7 @@ describe('database schema and migrations', () => {
     expect(tables).toEqual(
       expect.arrayContaining([
         'app_settings',
+        'agent_workspaces',
         'projects',
         'schema_migrations',
         'session_terminals',
@@ -238,17 +244,17 @@ describe('database schema and migrations', () => {
         'tool_profiles',
       ]),
     );
-    expect(db.pragma('user_version', { simple: true })).toBe(4);
+    expect(db.pragma('user_version', { simple: true })).toBe(5);
   });
 
   it('is idempotent when migrations run again', () => {
     const version = runMigrations(db);
 
-    expect(version).toBe(4);
+    expect(version).toBe(5);
     expect(
       (db.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get() as { count: number })
         .count,
-    ).toBe(4);
+    ).toBe(5);
   });
 
   it('enforces case-insensitive uniqueness on the normalized project path', () => {
@@ -287,7 +293,7 @@ describe('production static build', () => {
     const root = await request(staticApp).get('/');
     expect(root.status).toBe(200);
     expect(root.headers['cache-control']).toBe('no-store');
-    expect(root.text).toContain(`<meta name="devpilot-token" content="${TOKEN}" />`);
+    expect(root.text).toContain(`<meta name="${TOKEN_META_NAME}" content="${TOKEN}" />`);
 
     const nested = await request(staticApp).get('/settings');
     expect(nested.status).toBe(200);
@@ -490,7 +496,7 @@ describe('projects', () => {
 
     const created = await request(firstApp)
       .post('/api/projects')
-      .set('x-devpilot-token', TOKEN)
+      .set(TOKEN_HEADER, TOKEN)
       .send({ path: directory, name: 'Persisted' });
     expect(created.status).toBe(201);
     firstDb.close();
@@ -507,7 +513,7 @@ describe('projects', () => {
 
     const list = await request(secondApp)
       .get('/api/projects')
-      .set('x-devpilot-token', TOKEN);
+      .set(TOKEN_HEADER, TOKEN);
     expect(list.status).toBe(200);
     expect(list.body.projects).toHaveLength(1);
     expect(list.body.projects[0].name).toBe('Persisted');
@@ -538,7 +544,7 @@ describe('projects', () => {
     legacy.close();
 
     const migrated = openDatabase(legacyPath);
-    expect(migrated.pragma('user_version', { simple: true })).toBe(4);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(5);
     const row = migrated
       .prepare('SELECT path_key FROM projects WHERE id = ?')
       .get('legacy-project') as { path_key: string };
@@ -602,26 +608,35 @@ describe('CLI probes', () => {
     expect(result.status).toBe('missing');
   });
 
-  it('marks OpenCode unknown and keeps it disabled', async () => {
+  it('runs the non-interactive OpenCode version check and keeps it disabled', async () => {
     const response = await authorized('post', '/api/tools/opencode/check');
     expect(response.status).toBe(200);
-    expect(response.body.check.status).toBe('unknown');
+    expect(['available', 'missing']).toContain(response.body.check.status);
     expect(response.body.tool.enabled).toBe(false);
-    expect(response.body.tool.lastStatus).toBe('unknown');
-    expect(response.body.tool.lastCheckedAt).toBeTruthy();
-  });
+    expect(response.body.tool.launchVerified).toBe(false);
+    expect(response.body.tool.lastStatus).toBe(response.body.check.status);
+  }, 15000);
 
-  it('returns unconfigured for Antigravity and ignores request body arguments', async () => {
+  it('checks the discovered Antigravity CLI version and keeps it disabled', async () => {
     const response = await authorized('post', '/api/tools/antigravity/check').send({
       command: 'calc.exe',
       args: ['/bad'],
     });
     expect(response.status).toBe(200);
-    expect(response.body.check.status).toBe('unconfigured');
-    expect(response.body.tool.command).toBe('');
-    expect(response.body.tool.enabled).toBe(false);
-    expect(response.body.tool.lastStatus).toBe('unverified');
-  });
+    if (response.body.tool.command) {
+      expect(['available', 'missing']).toContain(response.body.check.status);
+      expect(response.body.tool.enabled).toBe(true);
+      expect(response.body.tool.launchVerified).toBe(true);
+      expect(response.body.tool.lastStatus).toBe(response.body.check.status);
+      expect(response.body.check.output).not.toContain('calc.exe');
+    } else {
+      expect(response.body.check.status).toBe('unconfigured');
+      expect(response.body.tool.enabled).toBe(true);
+      expect(response.body.tool.lastStatus).toBe('unverified');
+    }
+  }, 15000);
+
+
 
   it('checks Claude with a non-interactive version probe and keeps it enabled', async () => {
     const response = await authorized('post', '/api/tools/claude/check');
@@ -631,13 +646,30 @@ describe('CLI probes', () => {
     expect(response.body.tool.lastStatus).toBe(response.body.check.status);
   }, 15000);
 
-  it('checks Freebuff with a non-interactive version probe without enabling it', async () => {
+  it('checks Freebuff with a non-interactive version probe without changing its launch setting', async () => {
     const response = await authorized('post', '/api/tools/freebuff/check');
     expect(response.status).toBe(200);
     expect(['available', 'missing']).toContain(response.body.check.status);
-    expect(response.body.tool.enabled).toBe(false);
+    expect(response.body.tool.enabled).toBe(true);
     expect(response.body.tool.lastStatus).toBe(response.body.check.status);
   }, 15000);
+
+  it('toggles a verified tool enabled state and rejects unverified tools', async () => {
+    const disableRes = await authorized('patch', '/api/tools/freebuff').send({ enabled: false });
+    expect(disableRes.status).toBe(200);
+    expect(disableRes.body.tool.enabled).toBe(false);
+
+    const enableRes = await authorized('patch', '/api/tools/freebuff').send({ enabled: true });
+    expect(enableRes.status).toBe(200);
+    expect(enableRes.body.tool.enabled).toBe(true);
+
+    const rejectedRes = await authorized('patch', '/api/tools/opencode').send({ enabled: true });
+    expect(rejectedRes.status).toBe(409);
+    expect(rejectedRes.body.error.code).toBe('tool_not_verified');
+
+    const notFoundRes = await authorized('patch', '/api/tools/unknown-tool').send({ enabled: true });
+    expect(notFoundRes.status).toBe(404);
+  });
 
   it('returns 404 for an unknown CLI profile', async () => {
     const response = await authorized('post', '/api/tools/does-not-exist/check');
@@ -673,7 +705,7 @@ describe('configuration', () => {
     const defaultConfig = loadConfig({ DEVPILOT_DB_PATH: path.join(tempDir, 'config.db') });
     expect(defaultConfig.runtimeDir).toBe(path.join(defaultConfig.repoRoot, '.devpilot'));
     expect(defaultConfig.tokenFile).toBe(
-      path.join(defaultConfig.repoRoot, '.devpilot', 'server.json'),
+      path.join(defaultConfig.repoRoot, '.devpilot', RUNTIME_FILE_NAME),
     );
 
     const relativeConfig = loadConfig({
@@ -690,7 +722,7 @@ describe('configuration', () => {
       DEVPILOT_RUNTIME_DIR: absoluteDir,
     });
     expect(absoluteConfig.runtimeDir).toBe(absoluteDir);
-    expect(absoluteConfig.tokenFile).toBe(path.join(absoluteDir, 'server.json'));
+    expect(absoluteConfig.tokenFile).toBe(path.join(absoluteDir, RUNTIME_FILE_NAME));
   });
 
   it('reads and validates the per-session terminal cap', () => {

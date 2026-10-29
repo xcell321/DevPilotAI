@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import express, { type ErrorRequestHandler, type Express } from 'express';
+import { TOKEN_META_NAME } from '../../shared/protocol.cjs';
 import { createHealthHandler } from './api/health';
 import { createOverviewRouter } from './api/overview';
 import { createProjectsRouter } from './api/projects';
@@ -57,7 +58,7 @@ export function createApp({
     });
   const sessionService =
     providedSessionService ??
-    new SessionService(db, manager, config.maxTerminalsPerSession);
+    new SessionService(db, manager, config.maxTerminalsPerSession, config.runtimeDir);
 
   app.get('/api/health', createHealthHandler(config, db, terminalSupport));
   app.use(
@@ -86,12 +87,16 @@ export function createApp({
         next();
         return;
       }
+      const tokenMetaPattern = new RegExp(
+        `<meta\\s+name=["']${TOKEN_META_NAME}["'][^>]*>\\s*`,
+        'gi',
+      );
       const html = fs
         .readFileSync(indexPath, 'utf8')
-        .replace(/<meta\s+name=["']devpilot-token["'][^>]*>\s*/gi, '')
+        .replace(tokenMetaPattern, '')
         .replace(
           '</head>',
-          `  <meta name="devpilot-token" content="${token}" />\n  </head>`,
+          `  <meta name="${TOKEN_META_NAME}" content="${token}" />\n  </head>`,
         );
       res.setHeader('Cache-Control', 'no-store');
       res.type('html').send(html);

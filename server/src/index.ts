@@ -2,14 +2,18 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { createApp } from './app';
-import { loadConfig } from './config';
+import { formatHostForUrl, loadConfig, normalizeListenHost } from './config';
 import { openDatabase } from './db';
 import { createToken } from './security/auth';
 import { createPtyLauncher } from './services/processLauncher';
 import { ProcessManager } from './services/processManager';
 import { SessionService } from './services/sessions';
-import { reconcileStaleTerminals, shutdownRuntime } from './services/startup';
-import { seedToolProfiles } from './services/toolRegistry';
+import {
+  reconcileAgentWorkspaces,
+  reconcileStaleTerminals,
+  shutdownRuntime,
+} from './services/startup';
+import { seedToolProfiles, warmToolVersions } from './services/toolRegistry';
 import { detectTerminalSupport } from './terminalSupport';
 import { attachTerminalBridge } from './ws/terminalBridge';
 
@@ -42,9 +46,14 @@ fs.mkdirSync(config.runtimeDir, { recursive: true });
 
 const db = openDatabase(config.dbPath);
 seedToolProfiles(db);
+warmToolVersions(db);
 const reconciled = reconcileStaleTerminals(db);
 if (reconciled > 0) {
   console.log(`Marked ${reconciled} stale terminal(s) from the previous backend run.`);
+}
+const failedWorkspaces = reconcileAgentWorkspaces(db);
+if (failedWorkspaces > 0) {
+  console.log(`Marked ${failedWorkspaces} interrupted agent workspace(s) for inspection.`);
 }
 
 const token = createToken();
@@ -58,6 +67,7 @@ const sessionService = new SessionService(
   db,
   processManager,
   config.maxTerminalsPerSession,
+  config.runtimeDir,
 );
 const app = createApp({
   config,
@@ -68,28 +78,38 @@ const app = createApp({
   sessionService,
 });
 
-const server = app.listen(config.port, config.host, () => {
+const server = app.listen(config.port, normalizeListenHost(config.host), () => {
   const address = server.address() as AddressInfo;
-  const origin = `http://${config.host}:${address.port}`;
+  const origin = `http://${formatHostForUrl(config.host)}:${address.port}`;
   const schemaVersion = db.pragma('user_version', { simple: true }) as number;
 
-  fs.writeFileSync(
-    config.tokenFile,
-    JSON.stringify(
-      {
-        origin,
-        host: config.host,
-        port: address.port,
-        token,
-        pid: process.pid,
-        startedAt: new Date().toISOString(),
-      },
-      null,
-      2,
-    ),
-    { mode: 0o600 },
-  );
-  restrictTokenFilePermissions(config.tokenFile);
+  try {
+    fs.writeFileSync(
+      config.tokenFile,
+      JSON.stringify(
+        {
+          origin,
+          host: config.host,
+          port: address.port,
+          token,
+          pid: process.pid,
+          startedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+      { mode: 0o600 },
+    );
+    restrictTokenFilePermissions(config.tokenFile);
+  } catch (error) {
+    console.error(
+      `DevPilot could not write its runtime token file: ${
+        error instanceof Error ? error.message : 'unknown error'
+      }`,
+    );
+    shutdown(1);
+    return;
+  }
 
   console.log(`DevPilot AI server ${config.version}`);
   console.log(`  Local:      ${origin}`);
@@ -114,7 +134,7 @@ server.on('error', (error) => {
 });
 
 let shuttingDown = false;
-function shutdown(): void {
+function shutdown(exitCode = 0): void {
   if (shuttingDown) return;
   shuttingDown = true;
 
@@ -139,7 +159,7 @@ function shutdown(): void {
   })
     .then(() => {
       clearTimeout(forceTimer);
-      process.exit(0);
+      process.exit(exitCode);
     })
     .catch((error: unknown) => {
       clearTimeout(forceTimer);

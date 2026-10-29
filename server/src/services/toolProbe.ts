@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { inspectExecutable } from './executable';
 import { killProcessTree, sanitizedEnv } from './processUtils';
 
 export type ProbeStatus = 'available' | 'missing' | 'unknown';
@@ -20,6 +20,7 @@ interface ProbeSpec {
 
 const PROBE_TIMEOUT_MS = 10000;
 const MAX_OUTPUT_BYTES = 16384;
+const PROBE_OUTPUT_DISPLAY_LIMIT = 400;
 
 function quoteForCmd(value: string): string {
   if (!/[\s"&|<>^]/.test(value)) return value;
@@ -63,7 +64,7 @@ function finish(
 ): void {
   resolve({
     status,
-    output: output.trim().slice(0, 400),
+    output: output.trim().slice(0, PROBE_OUTPUT_DISPLAY_LIMIT),
     checkedAt: new Date().toISOString(),
   });
 }
@@ -74,62 +75,71 @@ export function probeExecutable(
   timeoutMs = PROBE_TIMEOUT_MS,
 ): Promise<ProbeResult> {
   return new Promise((resolve) => {
-    if (!path.isAbsolute(command)) {
+    const inspection = inspectExecutable(command);
+    if (!inspection.absolute) {
       finish(resolve, 'missing', '');
       return;
     }
-
-    let stats: fs.Stats;
-    try {
-      stats = fs.statSync(command);
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      finish(resolve, code === 'ENOENT' ? 'missing' : 'unknown', '');
+    if (!inspection.exists) {
+      finish(resolve, inspection.errorCode === 'ENOENT' ? 'missing' : 'unknown', '');
       return;
     }
-
-    if (!stats.isFile()) {
+    if (!inspection.isFile) {
       finish(resolve, 'missing', '');
+      return;
+    }
+    if (!inspection.executable) {
+      finish(resolve, 'unknown', '');
       return;
     }
 
     const spec = buildProbeSpec(command, args);
-    const child = spawn(spec.file, spec.args, {
-      cwd: os.tmpdir(),
-      env: sanitizedEnv(),
-      windowsHide: true,
-      windowsVerbatimArguments: spec.verbatim ?? false,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(spec.file, spec.args, {
+        cwd: os.tmpdir(),
+        env: sanitizedEnv(),
+        windowsHide: true,
+        windowsVerbatimArguments: spec.verbatim ?? false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch {
+      finish(resolve, 'unknown', '');
+      return;
+    }
 
     let output = '';
     let settled = false;
     let timedOut = false;
     let outputExceeded = false;
+    let timer: NodeJS.Timeout | null = null;
 
     const finishOnce = (status: ProbeStatus) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       finish(resolve, status, output);
     };
 
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       timedOut = true;
       killProcessTree(child.pid);
+      finishOnce('unknown');
     }, timeoutMs);
 
     const collect = (data: Buffer) => {
+      if (settled) return;
       if (output.length >= MAX_OUTPUT_BYTES) {
         outputExceeded = true;
         killProcessTree(child.pid);
+        finishOnce('unknown');
         return;
       }
       output += data.toString('utf8').slice(0, MAX_OUTPUT_BYTES - output.length);
     };
 
-    child.stdout.on('data', collect);
-    child.stderr.on('data', collect);
+    child.stdout?.on('data', collect);
+    child.stderr?.on('data', collect);
 
     child.on('error', (error) => {
       finishOnce((error as NodeJS.ErrnoException).code === 'ENOENT' ? 'missing' : 'unknown');

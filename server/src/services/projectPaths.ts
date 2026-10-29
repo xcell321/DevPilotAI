@@ -1,15 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import type { ProjectPathStatus } from '../../../shared/api-types.cjs';
 import { ApiError } from '../errors';
+import { MAX_PATH_LENGTH, MAX_PROJECT_NAME_LENGTH } from '../limits';
 
-export type ProjectPathStatus = 'ok' | 'missing' | 'inaccessible';
+export type { ProjectPathStatus };
 
 export interface ValidatedProjectPath {
   path: string;
   pathKey: string;
 }
 
-const MAX_PATH_LENGTH = 4096;
 const VALIDATION_TIMEOUT_MS = 5000;
 const STATUS_TIMEOUT_MS = 750;
 
@@ -183,7 +184,7 @@ export async function validateProjectPath(input: string): Promise<ValidatedProje
 }
 
 export function deriveProjectName(canonicalPath: string): string {
-  return (path.win32.basename(canonicalPath) || 'Project').slice(0, 80);
+  return (path.win32.basename(canonicalPath) || 'Project').slice(0, MAX_PROJECT_NAME_LENGTH);
 }
 
 async function checkStoredPath(candidate: string): Promise<ProjectPathStatus> {

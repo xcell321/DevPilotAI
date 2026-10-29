@@ -24,6 +24,17 @@ const runtimeFile = runtimeFileFor(root, {
 
 fs.mkdirSync(projectDir, { recursive: true });
 fs.writeFileSync(sentinelFile, 'keep this file');
+spawnSync('git', ['init', '-q'], { cwd: projectDir, stdio: 'ignore' });
+spawnSync('git', ['config', 'user.name', 'DevPilot E2E'], { cwd: projectDir, stdio: 'ignore' });
+spawnSync('git', ['config', 'user.email', 'devpilot-e2e@example.invalid'], {
+  cwd: projectDir,
+  stdio: 'ignore',
+});
+spawnSync('git', ['add', 'sentinel.txt'], { cwd: projectDir, stdio: 'ignore' });
+spawnSync('git', ['commit', '-q', '-m', 'Initialize E2E fixture'], {
+  cwd: projectDir,
+  stdio: 'ignore',
+});
 fs.writeFileSync(
   fixtureScript,
   `const fs = require('node:fs');
@@ -33,6 +44,10 @@ fs.writeFileSync(target, JSON.stringify({ cwd: process.cwd(), pid: process.pid }
 process.stdout.write('E2E_READY\\r\\n');
 const input = readline.createInterface({ input: process.stdin });
 input.on('line', (line) => {
+  if (line === 'pixel-size') {
+    process.stdout.write('\\x1b[14t');
+    return;
+  }
   if (line === 'exit') {
     process.stdout.write('E2E_EXIT\\r\\n');
     setTimeout(() => process.exit(0), 60);
@@ -181,8 +196,21 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const pageErrors = [];
   const socketUrls = [];
+  const socketInputs = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
-  page.on('websocket', (socket) => socketUrls.push(socket.url()));
+  page.on('websocket', (socket) => {
+    socketUrls.push(socket.url());
+    socket.on('framesent', (frame) => {
+      try {
+        const message = JSON.parse(frame.payload);
+        if (message.type === 'input' && typeof message.data === 'string') {
+          socketInputs.push(message.data);
+        }
+      } catch {
+        // Ignore non-JSON WebSocket frames.
+      }
+    });
+  });
   const terminalText = async (terminalId) =>
     (await page.getByTestId(`terminal-screen-${terminalId}`).locator('.xterm-rows').textContent()) ?? '';
   const waitForTerminalText = (terminalId, expected, timeout = 20000) =>
@@ -195,7 +223,9 @@ try {
       { timeout },
     );
   const focusTerminal = async (terminalId) => {
-    await page.getByTestId(`terminal-screen-${terminalId}`).click({ position: { x: 80, y: 60 } });
+    const screen = page.getByTestId(`terminal-screen-${terminalId}`);
+    await screen.click({ position: { x: 80, y: 60 } });
+    await screen.locator('.xterm-helper-textarea').focus().catch(() => {});
   };
   const parseDimensions = (value) => {
     const match = value?.match(/(\d+)x(\d+)/);
@@ -214,9 +244,9 @@ try {
   const tools = await page.textContent('[data-testid="stat-tools"]');
   const terminals = await page.textContent('[data-testid="stat-terminals"]');
   assert(projects?.trim() === '0', `Expected 0 projects, got ${projects}`);
-  assert(tools?.trim() === '1', `Expected 1 enabled CLI profile, got ${tools}`);
+  assert(tools?.trim() === '4', `Expected 4 launch-verified CLI profiles, got ${tools}`);
   assert(terminals?.trim() === '0', `Expected 0 running terminals, got ${terminals}`);
-  console.log('PASS overview shows real API counts (0 projects, 1 enabled profile, 0 terminals)');
+  console.log('PASS overview shows real API counts (0 projects, 4 enabled profiles, 0 terminals)');
 
   const routes = [
     ['Overview', '/', 'Overview'],
@@ -381,14 +411,14 @@ try {
   const antigravity = page.locator('[data-testid="tool-antigravity"]');
   await antigravity.waitFor({ state: 'visible', timeout: 10000 });
   assert(await antigravity.isVisible(), 'Antigravity profile card is missing');
-  assert((await antigravity.textContent())?.includes('Unverified'), 'Antigravity is not marked unverified');
-  assert((await antigravity.textContent())?.includes('Not configured'), 'Antigravity shows an invented command');
+  assert((await antigravity.textContent())?.includes('Enabled'), 'Antigravity is not enabled after interactive verification');
+  assert((await antigravity.textContent())?.includes('Launch ready'), 'Antigravity is not marked launch-ready');
 
   await page.getByTestId('check-tool-opencode').click();
-  await page.getByText(/OpenCode CLI: unknown/).waitFor();
+  await page.getByText(/OpenCode CLI: (available|missing)/).waitFor();
   await page.getByTestId('check-tool-antigravity').click();
-  await page.getByText(/Antigravity: unconfigured/).waitFor();
-  console.log('PASS CLI checks persist honest unknown/unconfigured states without launching agents');
+  await page.getByText(/Antigravity CLI: available/).waitFor();
+  console.log('PASS CLI checks report installation status without launching agents');
 
   await page.getByRole('link', { name: 'Sessions', exact: true }).click();
   assert(
@@ -504,16 +534,19 @@ try {
   const terminalEvidence = JSON.parse(fs.readFileSync(fixtureEvidence, 'utf8'));
   const secondTerminalEvidence = JSON.parse(fs.readFileSync(secondFixtureEvidence, 'utf8'));
   assert(
-    path.resolve(terminalEvidence.cwd) === fs.realpathSync.native(projectDir) &&
-      path.resolve(secondTerminalEvidence.cwd) === fs.realpathSync.native(projectDir),
-    'A terminal launched in the wrong cwd',
+    terminalA.workspace &&
+      terminalB.workspace &&
+      path.resolve(terminalEvidence.cwd) === path.resolve(terminalA.workspace.workingDirectory) &&
+      path.resolve(secondTerminalEvidence.cwd) === path.resolve(terminalB.workspace.workingDirectory) &&
+      terminalA.workspace.workingDirectory !== terminalB.workspace.workingDirectory,
+    'Terminals did not launch in their separate isolated Git workspaces',
   );
   assert(terminalEvidence.pid === firstPidA, 'Terminal A evidence pid does not match the API pid');
   assert(
     secondTerminalEvidence.pid === firstPidB,
     'Terminal B evidence pid does not match the API pid',
   );
-  console.log('PASS real Custom session launched two terminals in the project cwd');
+  console.log('PASS real Custom session launched terminals in separate isolated Git workspaces');
 
   await page.getByTestId(`open-workspace-${session.id}`).click();
   await page.waitForURL(
@@ -559,6 +592,15 @@ try {
     'Terminal output leaked into the first terminal',
   );
   console.log('PASS typed input reached the correct real process and stayed isolated per terminal');
+
+  await focusTerminal(terminalA.id);
+  await page.keyboard.type('pixel-size');
+  await page.keyboard.press('Enter');
+  await waitUntil(
+    () => socketInputs.some((data) => data.includes('\x1b[4;') && data.endsWith('t')),
+    'xterm did not reply to the PTY pixel-size query',
+  );
+  console.log('PASS xterm pixel-size response reached the PTY over WebSocket');
 
   const dimensionsBefore = parseDimensions(
     await page.getByTestId(`terminal-dimensions-${terminalA.id}`).textContent(),

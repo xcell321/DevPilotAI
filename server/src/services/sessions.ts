@@ -1,17 +1,29 @@
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
+import type {
+  AgentWorkspaceSummary,
+  SessionMode,
+  SessionSummary,
+  SessionTerminal,
+} from '../../../shared/api-types.cjs';
 import type { Db } from '../db/types';
 import { ApiError } from '../errors';
-import { DEFAULT_MAX_TERMINALS_PER_SESSION } from '../limits';
+import {
+  DEFAULT_MAX_TERMINALS_PER_SESSION,
+  MAX_SESSION_TITLE_LENGTH,
+} from '../limits';
+import { inspectExecutable } from './executable';
+import {
+  createGitWorktree,
+  getGitWorkspacePaths,
+  inspectGitRepository,
+  validateGitWorkspace,
+} from './gitWorkspaces';
 import type { ProcessManager } from './processManager';
 import { validateProjectPath } from './projectPaths';
 import {
   displayTerminalStatus,
   deriveSessionStatus,
   refreshSessionStatus,
-  type SessionDisplayStatus,
-  type TerminalDisplayStatus,
 } from './sessionStatus';
 import { probeExecutable } from './toolProbe';
 import {
@@ -24,43 +36,13 @@ import { verifiedProbeArgs } from './toolCatalog';
 
 const TOOL_CHECK_FRESH_MS = 5 * 60 * 1000;
 
-export type SessionMode = 'quick' | 'custom';
+export type { SessionMode, SessionSummary, SessionTerminal };
 
 export interface CreateSessionInput {
   projectId: string;
   mode: SessionMode;
   toolIds?: string[];
   title?: string;
-}
-
-export interface SessionTerminal {
-  id: string;
-  toolProfileId: string;
-  toolName: string;
-  status: TerminalDisplayStatus;
-  pid: number | null;
-  exitCode: number | null;
-  errorCode: string | null;
-  lastError: string | null;
-  startedAt: string | null;
-  endedAt: string | null;
-  restartCount: number;
-}
-
-export interface SessionSummary {
-  id: string;
-  title: string;
-  mode: SessionMode;
-  status: SessionDisplayStatus;
-  project: {
-    id: string;
-    name: string;
-    path: string;
-  };
-  createdAt: string;
-  updatedAt: string;
-  lastOpenedAt: string | null;
-  terminals: SessionTerminal[];
 }
 
 interface ProjectLaunchRow {
@@ -94,6 +76,14 @@ interface TerminalRow {
   last_error: string | null;
   error_code: string | null;
   restart_count: number;
+  workspace_owner_tool_profile_id: string | null;
+  workspace_task_title: string | null;
+  workspace_repository_root: string | null;
+  workspace_path: string | null;
+  workspace_working_directory: string | null;
+  workspace_base_commit: string | null;
+  workspace_status: AgentWorkspaceSummary['status'] | null;
+  workspace_error: string | null;
 }
 
 interface TerminalContext {
@@ -101,6 +91,7 @@ interface TerminalContext {
   sessionId: string;
   project: ProjectLaunchRow;
   tool: ToolProfile;
+  workspace: AgentWorkspaceSummary | null;
 }
 
 const SESSION_COLUMNS = `
@@ -119,7 +110,7 @@ function defaultTitle(projectName: string): string {
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, '0');
   const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-  return `${projectName} ${stamp}`.slice(0, 120);
+  return `${projectName} ${stamp}`.slice(0, MAX_SESSION_TITLE_LENGTH);
 }
 
 function mapTerminal(row: TerminalRow): SessionTerminal {
@@ -135,6 +126,25 @@ function mapTerminal(row: TerminalRow): SessionTerminal {
     startedAt: row.started_at,
     endedAt: row.ended_at,
     restartCount: Number(row.restart_count),
+    workspace:
+      row.workspace_status &&
+      row.workspace_owner_tool_profile_id &&
+      row.workspace_task_title &&
+      row.workspace_repository_root &&
+      row.workspace_path &&
+      row.workspace_working_directory &&
+      row.workspace_base_commit
+        ? {
+            ownerToolProfileId: row.workspace_owner_tool_profile_id,
+            taskTitle: row.workspace_task_title,
+            repositoryRoot: row.workspace_repository_root,
+            path: row.workspace_path,
+            workingDirectory: row.workspace_working_directory,
+            baseCommit: row.workspace_base_commit,
+            status: row.workspace_status,
+            error: row.workspace_error,
+          }
+        : null,
   };
 }
 
@@ -174,9 +184,18 @@ function getTerminalRows(db: Db, sessionId: string): TerminalRow[] {
     .prepare(
       `SELECT st.id, st.tool_profile_id, tp.display_name, st.process_status,
               st.process_pid, st.exit_code, st.started_at, st.ended_at,
-              st.last_error, st.error_code, st.restart_count
+              st.last_error, st.error_code, st.restart_count,
+              aw.owner_tool_profile_id AS workspace_owner_tool_profile_id,
+              aw.task_title AS workspace_task_title,
+              aw.repository_root AS workspace_repository_root,
+              aw.worktree_path AS workspace_path,
+              aw.working_directory AS workspace_working_directory,
+              aw.base_commit AS workspace_base_commit,
+              aw.status AS workspace_status,
+              aw.last_error AS workspace_error
        FROM session_terminals st
        JOIN tool_profiles tp ON tp.id = st.tool_profile_id
+       LEFT JOIN agent_workspaces aw ON aw.terminal_id = st.id
        WHERE st.session_id = ?
        ORDER BY st.started_at IS NULL, st.started_at, st.id`,
     )
@@ -242,20 +261,16 @@ async function ensureToolLaunchable(toolId: string, db: Db): Promise<ToolProfile
       `${tool.displayName} has no configured executable.`,
     );
   }
-  if (!path.isAbsolute(tool.command)) {
+  const inspection = inspectExecutable(tool.command);
+  if (!inspection.absolute) {
     throw new ApiError(
       409,
       'tool_not_launchable',
       `${tool.displayName} must use an absolute executable path.`,
     );
   }
-
-  let stats: fs.Stats;
-  try {
-    stats = await fs.promises.stat(tool.command);
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException | undefined)?.code;
-    if (code === 'ENOENT') {
+  if (!inspection.exists) {
+    if (inspection.errorCode === 'ENOENT') {
       updateToolCheck(db, tool.id, 'missing', new Date().toISOString());
       throw new ApiError(
         409,
@@ -269,12 +284,20 @@ async function ensureToolLaunchable(toolId: string, db: Db): Promise<ToolProfile
       `${tool.displayName}: the configured executable could not be checked.`,
     );
   }
-  if (!stats.isFile()) {
+  if (!inspection.isFile) {
     updateToolCheck(db, tool.id, 'missing', new Date().toISOString());
     throw new ApiError(
       409,
       'tool_missing',
       `${tool.displayName}: the configured executable is not a file.`,
+    );
+  }
+  if (!inspection.executable) {
+    updateToolCheck(db, tool.id, 'missing', new Date().toISOString());
+    throw new ApiError(
+      409,
+      'tool_unavailable',
+      `${tool.displayName}: the configured executable is not executable by this account.`,
     );
   }
 
@@ -341,11 +364,23 @@ function terminalWrite(
   ).run(status, new Date().toISOString(), lastError, errorCode, terminalId);
 }
 
+function requireWorkspaceRoot(runtimeDir: string | null): string {
+  if (!runtimeDir) {
+    throw new ApiError(
+      500,
+      'workspace_configuration_missing',
+      'The isolated workspace directory is not configured.',
+    );
+  }
+  return runtimeDir;
+}
+
 export class SessionService {
   constructor(
     private readonly db: Db,
     private readonly manager: ProcessManager,
     readonly maxTerminalsPerSession = DEFAULT_MAX_TERMINALS_PER_SESSION,
+    private readonly runtimeDir: string | null = null,
   ) {}
 
   list(): SessionSummary[] {
@@ -402,15 +437,39 @@ export class SessionService {
       tools.push(await ensureToolLaunchable(toolId, this.db));
     }
 
+    const workspaceRoot =
+      tools.length > 1 ? requireWorkspaceRoot(this.runtimeDir) : null;
+    const repository = workspaceRoot ? await inspectGitRepository(cwd) : null;
+
     const now = new Date().toISOString();
     const sessionId = crypto.randomUUID();
-    const title = (input.title?.trim() || defaultTitle(project.name)).slice(0, 120);
+    const title = (input.title?.trim() || defaultTitle(project.name)).slice(
+      0,
+      MAX_SESSION_TITLE_LENGTH,
+    );
     const terminals = tools.map((tool) => ({
       id: crypto.randomUUID(),
       tool,
     }));
+    const workspacePlans = repository && workspaceRoot
+      ? terminals.map(({ id, tool }) => ({
+          terminalId: id,
+          ownerToolProfileId: tool.id,
+          ...getGitWorkspacePaths(workspaceRoot, repository, sessionId, id),
+        }))
+      : [];
 
     this.db.transaction(() => {
+      const projectStillExists = this.db
+        .prepare('SELECT 1 AS present FROM projects WHERE id = ?')
+        .get(project.id);
+      if (!projectStillExists) {
+        throw new ApiError(
+          409,
+          'project_removed',
+          'The project was removed before the session could be created.',
+        );
+      }
       this.db
         .prepare(
           `INSERT INTO sessions
@@ -426,11 +485,92 @@ export class SessionService {
       for (const terminal of terminals) {
         insertTerminal.run(terminal.id, sessionId, terminal.tool.id);
       }
+      if (repository) {
+        const insertWorkspace = this.db.prepare(
+          `INSERT INTO agent_workspaces (
+             terminal_id, owner_tool_profile_id, task_title, repository_root,
+             worktree_path, working_directory, base_commit, status,
+             last_error, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, 'provisioning', NULL, ?, ?)`,
+        );
+        for (const plan of workspacePlans) {
+          insertWorkspace.run(
+            plan.terminalId,
+            plan.ownerToolProfileId,
+            title,
+            repository.repositoryRoot,
+            plan.worktreePath,
+            plan.workingDirectory,
+            repository.baseCommit,
+            now,
+            now,
+          );
+        }
+      }
       this.db
         .prepare('UPDATE projects SET last_used_at = ?, updated_at = ? WHERE id = ?')
         .run(now, now, project.id);
     })();
 
+    let workspaceFailure = false;
+    if (repository) {
+      for (const plan of workspacePlans) {
+        try {
+          await createGitWorktree(repository, plan.worktreePath);
+          this.db
+            .prepare(
+              `UPDATE agent_workspaces
+               SET status = 'ready', last_error = NULL, updated_at = ?
+               WHERE terminal_id = ?`,
+            )
+            .run(new Date().toISOString(), plan.terminalId);
+        } catch (error) {
+          workspaceFailure = true;
+          const message =
+            error instanceof ApiError
+              ? error.message
+              : 'The isolated Git workspace could not be created.';
+          this.db
+            .prepare(
+              `UPDATE agent_workspaces
+               SET status = 'failed', last_error = ?, updated_at = ?
+               WHERE terminal_id = ?`,
+            )
+            .run(message, new Date().toISOString(), plan.terminalId);
+          terminalWrite(
+            this.db,
+            plan.terminalId,
+            'error',
+            'workspace_provision_failed',
+            message,
+          );
+        }
+      }
+    }
+
+    if (workspaceFailure) {
+      const message = 'No CLI agents were started because an isolated workspace could not be created.';
+      for (const terminal of terminals) {
+        const workspace = this.db
+          .prepare('SELECT status FROM agent_workspaces WHERE terminal_id = ?')
+          .get(terminal.id) as { status: string } | undefined;
+        if (workspace?.status === 'ready') {
+          terminalWrite(
+            this.db,
+            terminal.id,
+            'error',
+            'workspace_provision_failed',
+            message,
+          );
+        }
+      }
+      refreshSessionStatus(this.db, sessionId);
+      return this.get(sessionId);
+    }
+
+    const workspaceCwds = new Map(
+      workspacePlans.map((plan) => [plan.terminalId, plan.workingDirectory]),
+    );
     for (const terminal of terminals) {
       try {
         await this.manager.start({
@@ -438,7 +578,7 @@ export class SessionService {
           sessionId,
           file: terminal.tool.command,
           args: terminal.tool.fixedArgs,
-          cwd,
+          cwd: workspaceCwds.get(terminal.id) ?? cwd,
         });
       } catch (error) {
         const code = error instanceof ApiError ? error.code : 'start_failed';
@@ -458,18 +598,22 @@ export class SessionService {
   ): Promise<SessionSummary> {
     const context = await this.getTerminalContext(terminalId, expectedSessionId);
     await ensureProjectLaunchable(context.project);
+    if (context.workspace) await ensureWorkspaceLaunchable(context.workspace);
     await ensureToolLaunchable(context.tool.id, this.db);
 
     await this.manager.restart(terminalId, async () => {
       const current = await this.getTerminalContext(terminalId, expectedSessionId);
-      const cwd = await ensureProjectLaunchable(current.project);
+      const currentProjectCwd = await ensureProjectLaunchable(current.project);
+      const currentWorkspaceCwd = current.workspace
+        ? await ensureWorkspaceLaunchable(current.workspace)
+        : null;
       const tool = await ensureToolLaunchable(current.tool.id, this.db);
       return {
         terminalId,
         sessionId: current.sessionId,
         file: tool.command,
         args: tool.fixedArgs,
-        cwd,
+        cwd: currentWorkspaceCwd ?? currentProjectCwd,
       };
     });
 
@@ -521,10 +665,19 @@ export class SessionService {
       .prepare(
         `SELECT st.id, st.session_id, st.tool_profile_id,
                 p.id AS project_id, p.name AS project_name, p.path AS project_path,
-                p.path_key AS project_path_key
+                p.path_key AS project_path_key,
+                aw.owner_tool_profile_id AS workspace_owner_tool_profile_id,
+                aw.task_title AS workspace_task_title,
+                aw.repository_root AS workspace_repository_root,
+                aw.worktree_path AS workspace_path,
+                aw.working_directory AS workspace_working_directory,
+                aw.base_commit AS workspace_base_commit,
+                aw.status AS workspace_status,
+                aw.last_error AS workspace_error
          FROM session_terminals st
          JOIN sessions s ON s.id = st.session_id
          JOIN projects p ON p.id = s.project_id
+         LEFT JOIN agent_workspaces aw ON aw.terminal_id = st.id
          WHERE st.id = ?`,
       )
       .get(terminalId) as
@@ -536,6 +689,14 @@ export class SessionService {
           project_name: string;
           project_path: string;
           project_path_key: string;
+          workspace_owner_tool_profile_id: string | null;
+          workspace_task_title: string | null;
+          workspace_repository_root: string | null;
+          workspace_path: string | null;
+          workspace_working_directory: string | null;
+          workspace_base_commit: string | null;
+          workspace_status: AgentWorkspaceSummary['status'] | null;
+          workspace_error: string | null;
         }
       | undefined;
 
@@ -555,6 +716,39 @@ export class SessionService {
         path_key: row.project_path_key,
       },
       tool,
+      workspace:
+        row.workspace_status &&
+        row.workspace_owner_tool_profile_id &&
+        row.workspace_task_title &&
+        row.workspace_repository_root &&
+        row.workspace_path &&
+        row.workspace_working_directory &&
+        row.workspace_base_commit
+          ? {
+              ownerToolProfileId: row.workspace_owner_tool_profile_id,
+              taskTitle: row.workspace_task_title,
+              repositoryRoot: row.workspace_repository_root,
+              path: row.workspace_path,
+              workingDirectory: row.workspace_working_directory,
+              baseCommit: row.workspace_base_commit,
+              status: row.workspace_status,
+              error: row.workspace_error,
+            }
+          : null,
     };
   }
+}
+
+async function ensureWorkspaceLaunchable(
+  workspace: AgentWorkspaceSummary,
+): Promise<string> {
+  if (workspace.status !== 'ready') {
+    throw new ApiError(
+      409,
+      'git_workspace_unavailable',
+      workspace.error ?? 'The isolated Git workspace is not ready.',
+    );
+  }
+  await validateGitWorkspace(workspace.path, workspace.workingDirectory);
+  return workspace.workingDirectory;
 }

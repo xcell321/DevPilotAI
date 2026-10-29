@@ -7,6 +7,7 @@ import path from 'node:path';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { WebSocket, type ClientOptions } from 'ws';
+import protocol from '../../shared/protocol.cjs';
 import { createApp } from '../src/app';
 import { loadConfig, type AppConfig } from '../src/config';
 import { openDatabase } from '../src/db';
@@ -17,6 +18,7 @@ import { SessionService, type SessionSummary } from '../src/services/sessions';
 import { seedToolProfiles } from '../src/services/toolRegistry';
 import { attachTerminalBridge, type TerminalBridge } from '../src/ws/terminalBridge';
 
+const { TOKEN_HEADER, WS_TOKEN_PROTOCOL_PREFIX } = protocol;
 const TOKEN = 'test-token-0123456789abcdef';
 const OUTPUT_CHUNK_BYTES = 64 * 1024;
 const MAX_WS_MESSAGE_BYTES = 128 * 1024;
@@ -210,7 +212,7 @@ function wsUrl(sessionId: string, terminalId: string, query = ''): string {
 }
 
 function tokenProtocol(token = TOKEN): string {
-  return `devpilot.token.${token}`;
+  return `${WS_TOKEN_PROTOCOL_PREFIX}${token}`;
 }
 
 function openSocket(
@@ -383,7 +385,12 @@ if (mode === 'ws-echo') {
     forceWaitMs: 2000,
     bufferLimit: 200 * 1024,
   });
-  sessions = new SessionService(db, manager);
+  sessions = new SessionService(
+    db,
+    manager,
+    config.maxTerminalsPerSession,
+    config.runtimeDir,
+  );
   app = createApp({
     config,
     db,
@@ -440,12 +447,44 @@ function authorized(
   method: 'get' | 'post',
   url: string,
 ) {
-  return request(app)[method](url).set('x-devpilot-token', TOKEN);
+  return request(app)[method](url).set(TOKEN_HEADER, TOKEN);
 }
 
-async function makeProject(name: string): Promise<{ id: string; path: string }> {
+async function makeProject(
+  name: string,
+  initializeGit = false,
+): Promise<{ id: string; path: string }> {
   const directory = path.join(tempDir, name);
   fs.mkdirSync(directory, { recursive: true });
+  if (initializeGit) {
+    const initialized = spawnSync('git', ['-C', directory, 'init', '--quiet'], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    if (initialized.status !== 0) {
+      throw new Error(`Could not initialize test Git repository: ${initialized.stderr}`);
+    }
+    const committed = spawnSync(
+      'git',
+      [
+        '-C',
+        directory,
+        '-c',
+        'user.name=DevPilot Test',
+        '-c',
+        'user.email=devpilot-test@example.invalid',
+        'commit',
+        '--allow-empty',
+        '--quiet',
+        '-m',
+        'Initial',
+      ],
+      { encoding: 'utf8', windowsHide: true },
+    );
+    if (committed.status !== 0) {
+      throw new Error(`Could not commit test Git repository: ${committed.stderr}`);
+    }
+  }
   const canonical = fs.realpathSync.native(directory);
   const response = await authorized('post', '/api/projects').send({ path: canonical, name });
   expect(response.status).toBe(201);
@@ -611,7 +650,7 @@ describe('terminal WebSocket bridge', () => {
   it('keeps terminal output isolated and replays large buffered output in bounded chunks', async () => {
     addProfile('ws-echo', 'ws-echo');
     addProfile('ws-large', 'ws-large');
-    const project = await makeProject('ws-isolation');
+    const project = await makeProject('ws-isolation', true);
     const session = await createSession(project.id, ['ws-echo', 'ws-large']);
     const echoTerminal = session.terminals.find(
       (terminal) => terminal.toolProfileId === 'ws-echo',
@@ -647,7 +686,7 @@ describe('terminal WebSocket bridge', () => {
         500,
       ),
     ).rejects.toThrow(/Timed out/);
-  });
+  }, 30000);
 
   it('closes attached clients cleanly when the bridge shuts down', async () => {
     addProfile('ws-hold', 'ws-hold');

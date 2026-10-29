@@ -22,6 +22,7 @@ export function useBackend(): BackendState {
       setHealth(nextHealth);
       setHealthError(null);
     } catch (error) {
+      setHealth(null);
       setHealthError(error instanceof Error ? error.message : 'Backend unavailable.');
     }
 
@@ -30,6 +31,7 @@ export function useBackend(): BackendState {
       setOverview(nextOverview);
       setOverviewError(null);
     } catch (error) {
+      setOverview(null);
       setOverviewError(error instanceof Error ? error.message : 'Overview unavailable.');
     }
   }, []);

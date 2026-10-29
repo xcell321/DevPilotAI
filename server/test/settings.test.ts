@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import protocol from '../../shared/protocol.cjs';
 import { createApp } from '../src/app';
 import { loadConfig, type AppConfig } from '../src/config';
 import { openDatabase } from '../src/db';
@@ -10,6 +11,7 @@ import type { Db } from '../src/db/types';
 import { seedToolProfiles } from '../src/services/toolRegistry';
 import { WORKSPACE_PREFERENCES_KEY } from '../src/services/workspacePreferences';
 
+const { TOKEN_HEADER } = protocol;
 const TOKEN = 'test-token-0123456789abcdef';
 const NOW = '2026-10-29T12:00:00.000Z';
 
@@ -32,7 +34,7 @@ function authorized(
   url: string,
   target = app,
 ) {
-  return request(target)[method](url).set('x-devpilot-token', TOKEN);
+  return request(target)[method](url).set(TOKEN_HEADER, TOKEN);
 }
 
 function insertWorkspaceData(database: Db): void {

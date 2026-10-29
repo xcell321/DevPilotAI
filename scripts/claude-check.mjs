@@ -3,12 +3,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
+import protocol from '../shared/protocol.cjs';
 
+const { RUNTIME_FILE_NAME, TOKEN_HEADER } = protocol;
 const root = path.resolve(import.meta.dirname, '..');
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devpilot-claude-'));
 const projectDir = path.join(tempRoot, 'claude-cwd-proof');
 const runtimeDir = path.join(tempRoot, 'runtime');
-const runtimeFile = path.join(runtimeDir, 'server.json');
+const runtimeFile = path.join(runtimeDir, RUNTIME_FILE_NAME);
 const dbPath = path.join(tempRoot, 'claude.db');
 const serverEntry = path.join(root, 'server', 'dist', 'index.js');
 const webDist = path.join(root, 'apps', 'web', 'dist');
@@ -142,7 +144,7 @@ try {
   const headers = {
     accept: 'application/json',
     'content-type': 'application/json',
-    'x-devpilot-token': runtime.token,
+    [TOKEN_HEADER]: runtime.token,
   };
   const api = async (pathname, options = {}) => {
     const response = await fetch(`${runtime.origin}${pathname}`, { ...options, headers });

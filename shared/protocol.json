@@ -1,0 +1,6 @@
+{
+  "TOKEN_HEADER": "x-devpilot-token",
+  "TOKEN_META_NAME": "devpilot-token",
+  "WS_TOKEN_PROTOCOL_PREFIX": "devpilot.token.",
+  "RUNTIME_FILE_NAME": "server.json"
+}

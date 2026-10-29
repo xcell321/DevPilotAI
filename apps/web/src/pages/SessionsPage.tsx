@@ -255,6 +255,22 @@ export function SessionsPage() {
                                 ? ` · Restarted ${terminal.restartCount} time${terminal.restartCount === 1 ? '' : 's'}`
                                 : ''}
                             </p>
+                            {terminal.workspace ? (
+                              <div className="mt-2 text-[11px] text-muted">
+                                <p>
+                                  Isolated Git workspace ({terminal.workspace.status}) · Owner{' '}
+                                  {terminal.workspace.ownerToolProfileId} · Base commit{' '}
+                                  {terminal.workspace.baseCommit.slice(0, 8)}
+                                </p>
+                                <p className="mono mt-0.5 break-all">
+                                  Working directory: {terminal.workspace.workingDirectory}
+                                </p>
+                                <p>Changes stay isolated; they are not merged automatically.</p>
+                                {terminal.workspace.error ? (
+                                  <p className="mt-0.5 text-danger">{terminal.workspace.error}</p>
+                                ) : null}
+                              </div>
+                            ) : null}
                             {terminal.lastError ? (
                               <p className="mt-1 text-[11px] text-danger">
                                 {terminal.lastError}

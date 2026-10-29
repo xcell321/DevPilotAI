@@ -39,6 +39,21 @@ export function reconcileStaleTerminals(
   return rows.length;
 }
 
+export function reconcileAgentWorkspaces(
+  db: Db,
+  now = new Date().toISOString(),
+): number {
+  return db
+    .prepare(
+      `UPDATE agent_workspaces
+       SET status = 'failed',
+           last_error = 'Backend restarted during workspace provisioning; inspect the worktree before retrying.',
+           updated_at = ?
+       WHERE status = 'provisioning'`,
+    )
+    .run(now).changes;
+}
+
 export interface ShutdownOptions {
   server: Pick<Server, 'close'>;
   db: Db;

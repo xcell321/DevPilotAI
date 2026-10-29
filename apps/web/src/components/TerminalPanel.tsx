@@ -12,9 +12,12 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import protocol from '../../../../shared/protocol.json';
 import { localToken } from '../lib/api';
 import type { SessionTerminal, TerminalDisplayStatus } from '../lib/types';
 import { TerminalStatusBadge } from './Badge';
+
+const { WS_TOKEN_PROTOCOL_PREFIX } = protocol;
 
 interface TerminalPanelProps {
   sessionId: string;
@@ -116,6 +119,7 @@ export function TerminalPanel({
       fontSize: 13,
       lineHeight: 1.2,
       scrollback: 5000,
+      windowOptions: { getWinSizePixels: true },
       theme: {
         background: '#0a101c',
         foreground: '#f9fafb',
@@ -233,7 +237,7 @@ export function TerminalPanel({
         `/terminals/${encodeURIComponent(terminal.id)}`;
 
       try {
-        socket = new WebSocket(url, [`devpilot.token.${token}`]);
+        socket = new WebSocket(url, [`${WS_TOKEN_PROTOCOL_PREFIX}${token}`]);
       } catch {
         scheduleReconnect();
         return;
