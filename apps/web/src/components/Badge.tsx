@@ -1,4 +1,5 @@
 import type {
+  AgentTaskState,
   ProjectPathStatus,
   SessionStatus,
   TerminalDisplayStatus,
@@ -127,6 +128,42 @@ const TERMINAL_STATUS_LABELS: Record<TerminalDisplayStatus, string> = {
   error: 'Error',
   unavailable: 'Unavailable',
 };
+
+const TASK_STATE_LABELS: Record<AgentTaskState, string> = {
+  unassigned: 'Unassigned',
+  blocked: 'Blocked',
+  ready: 'Ready',
+  assigned: 'Assigned',
+  running: 'Running',
+  validating: 'Validating',
+  awaiting_integration: 'Awaiting integration',
+  integrated: 'Integrated',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+};
+
+const TASK_STATE_CLASSES: Record<AgentTaskState, string> = {
+  unassigned: 'bg-hover text-muted',
+  blocked: 'bg-warn-soft text-warn',
+  ready: 'bg-primary-soft text-ink',
+  assigned: 'bg-warn-soft text-warn',
+  running: 'bg-ok-soft text-ok',
+  validating: 'bg-warn-soft text-warn',
+  awaiting_integration: 'bg-primary-soft text-ink',
+  integrated: 'bg-ok-soft text-ok',
+  failed: 'bg-danger-soft text-danger',
+  cancelled: 'bg-hover text-muted',
+};
+
+export function TaskStateBadge({ state }: { state: AgentTaskState }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border border-line px-2 py-0.5 text-[11px] font-medium ${TASK_STATE_CLASSES[state]}`}
+    >
+      {TASK_STATE_LABELS[state]}
+    </span>
+  );
+}
 
 export function TerminalStatusBadge({ status }: { status: TerminalDisplayStatus }) {
   return (

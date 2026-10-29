@@ -65,7 +65,7 @@ describe('health', () => {
     expect(response.body.status).toBe('ok');
     expect(response.body.app.name).toBe('DevPilot AI');
     expect(response.body.terminalSupport.status).toBe('available');
-    expect(response.body.database.schemaVersion).toBe(5);
+    expect(response.body.database.schemaVersion).toBe(11);
     expect(JSON.stringify(response.body)).not.toContain(TOKEN);
   });
 
@@ -190,10 +190,10 @@ describe('seeded tool profiles', () => {
     expect(tools.claude?.fixedArgs).toEqual([]);
 
     expect(tools.opencode?.enabled).toBe(false);
-    expect(tools.opencode?.launchVerified).toBe(false);
+    expect(tools.opencode?.launchVerified).toBe(true);
+    expect(tools.opencode?.fixedArgs).toEqual([]);
     expect(tools.opencode?.launchable).toBe(false);
     expect(tools.opencode?.launchReason).toContain('Disabled');
-    expect(tools.opencode?.notes).toContain('renders in xterm.js');
 
     expect(tools.freebuff?.enabled).toBe(true);
     expect(tools.freebuff?.launchVerified).toBe(true);
@@ -237,6 +237,7 @@ describe('database schema and migrations', () => {
       expect.arrayContaining([
         'app_settings',
         'agent_workspaces',
+        'agent_tasks',
         'projects',
         'schema_migrations',
         'session_terminals',
@@ -244,17 +245,17 @@ describe('database schema and migrations', () => {
         'tool_profiles',
       ]),
     );
-    expect(db.pragma('user_version', { simple: true })).toBe(5);
+    expect(db.pragma('user_version', { simple: true })).toBe(11);
   });
 
   it('is idempotent when migrations run again', () => {
     const version = runMigrations(db);
 
-    expect(version).toBe(5);
+    expect(version).toBe(11);
     expect(
       (db.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get() as { count: number })
         .count,
-    ).toBe(5);
+    ).toBe(11);
   });
 
   it('enforces case-insensitive uniqueness on the normalized project path', () => {
@@ -544,7 +545,7 @@ describe('projects', () => {
     legacy.close();
 
     const migrated = openDatabase(legacyPath);
-    expect(migrated.pragma('user_version', { simple: true })).toBe(5);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(11);
     const row = migrated
       .prepare('SELECT path_key FROM projects WHERE id = ?')
       .get('legacy-project') as { path_key: string };
@@ -608,12 +609,12 @@ describe('CLI probes', () => {
     expect(result.status).toBe('missing');
   });
 
-  it('runs the non-interactive OpenCode version check and keeps it disabled', async () => {
+  it('runs the non-interactive OpenCode version check and reports status honestly', async () => {
     const response = await authorized('post', '/api/tools/opencode/check');
     expect(response.status).toBe(200);
     expect(['available', 'missing']).toContain(response.body.check.status);
     expect(response.body.tool.enabled).toBe(false);
-    expect(response.body.tool.launchVerified).toBe(false);
+    expect(response.body.tool.launchVerified).toBe(true);
     expect(response.body.tool.lastStatus).toBe(response.body.check.status);
   }, 15000);
 
@@ -663,9 +664,14 @@ describe('CLI probes', () => {
     expect(enableRes.status).toBe(200);
     expect(enableRes.body.tool.enabled).toBe(true);
 
-    const rejectedRes = await authorized('patch', '/api/tools/opencode').send({ enabled: true });
-    expect(rejectedRes.status).toBe(409);
-    expect(rejectedRes.body.error.code).toBe('tool_not_verified');
+    db.prepare("UPDATE tool_profiles SET launch_verified = 0 WHERE id = 'opencode'").run();
+    try {
+      const rejectedRes = await authorized('patch', '/api/tools/opencode').send({ enabled: true });
+      expect(rejectedRes.status).toBe(409);
+      expect(rejectedRes.body.error.code).toBe('tool_not_verified');
+    } finally {
+      db.prepare("UPDATE tool_profiles SET launch_verified = 1 WHERE id = 'opencode'").run();
+    }
 
     const notFoundRes = await authorized('patch', '/api/tools/unknown-tool').send({ enabled: true });
     expect(notFoundRes.status).toBe(404);

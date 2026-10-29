@@ -22,7 +22,13 @@ interface StoredPreferencesRow {
   value_json: string;
 }
 
-const TERMINAL_LAYOUTS = new Set<TerminalLayout>(['auto', 'single']);
+const TERMINAL_LAYOUTS = new Set<TerminalLayout>([
+  'auto',
+  'single',
+  'horizontal',
+  'vertical',
+  'grid',
+]);
 
 export const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
   version: WORKSPACE_PREFERENCES_VERSION,

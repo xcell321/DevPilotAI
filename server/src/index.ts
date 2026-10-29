@@ -5,6 +5,7 @@ import { createApp } from './app';
 import { formatHostForUrl, loadConfig, normalizeListenHost } from './config';
 import { openDatabase } from './db';
 import { createToken } from './security/auth';
+import { OrchestrationService } from './services/orchestration';
 import { createPtyLauncher } from './services/processLauncher';
 import { ProcessManager } from './services/processManager';
 import { SessionService } from './services/sessions';
@@ -69,6 +70,18 @@ const sessionService = new SessionService(
   config.maxTerminalsPerSession,
   config.runtimeDir,
 );
+const orchestrationService = new OrchestrationService({
+  db,
+  sessions: sessionService,
+  maxConcurrentAgents: config.maxConcurrentAgents,
+  maxLiveTerminals: config.maxTerminals,
+  runtimeDir: config.runtimeDir,
+});
+const recoveredTasks = orchestrationService.recover();
+if (recoveredTasks > 0) {
+  console.log(`Recovered ${recoveredTasks} interrupted task, validation, or integration record(s).`);
+}
+
 const app = createApp({
   config,
   db,
@@ -76,6 +89,7 @@ const app = createApp({
   terminalSupport,
   processManager,
   sessionService,
+  orchestrationService,
 });
 
 const server = app.listen(config.port, normalizeListenHost(config.host), () => {
@@ -128,6 +142,20 @@ const terminalBridge = attachTerminalBridge({
   sessions: sessionService,
 });
 
+// The scheduler is driven by explicit API calls plus this slow reconciliation
+// tick, which resumes queued integrations and ready tasks after a restart.
+const orchestrationTimer = setInterval(() => {
+  void orchestrationService
+    .scheduleAll()
+    .then(() => orchestrationService.processQueue())
+    .catch((error: unknown) => {
+      console.error(
+        `Orchestration tick failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+    });
+}, 5000);
+orchestrationTimer.unref();
+
 server.on('error', (error) => {
   console.error(`DevPilot server failed to start: ${error.message}`);
   process.exitCode = 1;
@@ -142,6 +170,7 @@ function shutdown(exitCode = 0): void {
   forceTimer.unref();
 
   terminalBridge.close();
+  clearInterval(orchestrationTimer);
   void shutdownRuntime({
     server,
     db,

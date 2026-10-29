@@ -565,6 +565,16 @@ describe('terminal WebSocket bridge', () => {
     const session = await createSession(project.id, ['ws-echo']);
     const terminalId = session.terminals[0]!.id;
 
+    await waitUntil(() => {
+      if (!manager.hasLive(terminalId)) return false;
+      const attachment = manager.attach(terminalId);
+      try {
+        return attachment.replay().includes('ready');
+      } finally {
+        attachment.detach();
+      }
+    }, 'Terminal output was not buffered before WebSocket reconnect');
+
     const first = await connect(session.id, terminalId);
     const status = await first.queue.next((message) => message.type === 'status');
     expect(status.pid).toBeTypeOf('number');

@@ -365,6 +365,7 @@ describe('session creation contract', () => {
       DEVPILOT_WEB_DIST: config.webDist,
       DEVPILOT_MAX_TERMINALS_PER_SESSION: '2',
     });
+
     const limitedApp = createApp({
       config: limitedConfig,
       db,
@@ -392,6 +393,52 @@ describe('session creation contract', () => {
     expect(accepted.status).toBe(201);
     await authorized('post', `/api/sessions/${accepted.body.session.id}/stop`, limitedApp);
   }, 20000);
+
+  it('rejects overlapping or unsafe declared scopes before creating sessions or processes', async () => {
+    const project = await makeProject('Task Scope Validation');
+    addProfile('scope-validation-a', 'stay');
+    addProfile('scope-validation-b', 'stay');
+
+    const overlap = await authorized('post', '/api/sessions').send({
+      projectId: project.id,
+      mode: 'custom',
+      workspaceMode: 'shared',
+      toolIds: ['scope-validation-a', 'scope-validation-b'],
+      tasks: [
+        {
+          toolId: 'scope-validation-a',
+          description: 'Edit source',
+          declaredFileScope: ['src'],
+        },
+        {
+          toolId: 'scope-validation-b',
+          description: 'Edit a child folder',
+          declaredFileScope: ['src/components'],
+        },
+      ],
+    });
+    expect(overlap.status).toBe(409);
+    expect(overlap.body.error.code).toBe('task_scope_overlap');
+
+    const unsafe = await authorized('post', '/api/sessions').send({
+      projectId: project.id,
+      mode: 'custom',
+      workspaceMode: 'shared',
+      toolIds: ['scope-validation-a'],
+      tasks: [
+        {
+          toolId: 'scope-validation-a',
+          description: 'Escape repository scope',
+          declaredFileScope: ['../outside.txt'],
+        },
+      ],
+    });
+    expect(unsafe.status).toBe(400);
+    expect(unsafe.body.error.code).toBe('invalid_task_scope');
+    expect(db.prepare('SELECT COUNT(*) AS count FROM sessions').get()).toEqual({ count: 0 });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM agent_tasks').get()).toEqual({ count: 0 });
+    expect(manager.liveCount).toBe(0);
+  });
 
   it('refuses unknown projects and unknown CLI profiles without saving a session', async () => {
     const unknownProject = await authorized('post', '/api/sessions').send({
@@ -674,7 +721,7 @@ describe('session lifecycle', () => {
     expect((await getSession(sessionId)).terminals[0].restartCount).toBe(2);
 
     await authorized('post', `/api/sessions/${sessionId}/stop`);
-  });
+  }, 20000);
 
   it('applies the configured global live-terminal cap without dropping the session', async () => {
     const project = await makeProject('Runtime Project', true);
@@ -891,6 +938,131 @@ describe('launch readiness and project safety', () => {
 });
 
 describe('isolated agent workspaces', () => {
+  it('creates agent-owned branches and task records and rejects conflicting scope updates', async () => {
+    const project = await makeProject('Task Branch Project', true);
+    addProfile('workspace-task-a', 'stay');
+    addProfile('workspace-task-b', 'stay');
+    const created = await authorized('post', '/api/sessions').send({
+      projectId: project.id,
+      mode: 'custom',
+      workspaceMode: 'isolated',
+      toolIds: ['workspace-task-a', 'workspace-task-b'],
+      tasks: [
+        {
+          toolId: 'workspace-task-a',
+          description: 'Implement the web view',
+          declaredFileScope: ['apps/web'],
+          dependencies: ['workspace-task-b'],
+        },
+        {
+          toolId: 'workspace-task-b',
+          description: 'Define the shared contract',
+          declaredFileScope: ['shared'],
+        },
+      ],
+    });
+
+    expect(created.status).toBe(201);
+    const sessionId = created.body.session.id as string;
+    const [terminalA, terminalB] = created.body.session.terminals as Array<{
+      id: string;
+      status: string;
+      errorCode: string | null;
+      task: {
+        description: string;
+        declaredFileScope: string[];
+        dependencies: string[];
+        status: string;
+        state: string;
+      };
+      workspace: {
+        path: string;
+        baseCommit: string;
+        branchName: string;
+      };
+    }>;
+    expect(terminalA.task).toMatchObject({
+      description: 'Implement the web view',
+      declaredFileScope: ['apps/web'],
+      dependencies: [terminalB.id],
+      status: 'planned',
+    });
+    expect(terminalB.task).toMatchObject({
+      description: 'Define the shared contract',
+      declaredFileScope: ['shared'],
+      dependencies: [],
+      status: 'planned',
+    });
+    // Dependent tasks wait for the scheduler instead of racing their dependency.
+    expect(terminalA.task?.state).toBe('blocked');
+    expect(terminalA.status).toBe('stopped');
+    expect(terminalA.errorCode).toBe('awaiting_dependencies');
+    expect(terminalB.task?.state).toBe('running');
+    expect(terminalA.workspace.branchName).toContain(terminalA.id);
+    expect(terminalB.workspace.branchName).toContain(terminalB.id);
+    expect(terminalA.workspace.branchName).not.toBe(terminalB.workspace.branchName);
+    for (const terminal of [terminalA, terminalB]) {
+      const branch = spawnSync(
+        'git',
+        ['-C', terminal.workspace.path, 'branch', '--show-current'],
+        { encoding: 'utf8', windowsHide: true },
+      );
+      const head = spawnSync(
+        'git',
+        ['-C', terminal.workspace.path, 'rev-parse', 'HEAD'],
+        { encoding: 'utf8', windowsHide: true },
+      );
+      expect(branch.status).toBe(0);
+      expect(branch.stdout.trim()).toBe(terminal.workspace.branchName);
+      expect(head.status).toBe(0);
+      expect(head.stdout.trim()).toBe(terminal.workspace.baseCommit);
+    }
+
+    const liveStatus = await authorized(
+      'patch',
+      `/api/sessions/${sessionId}/terminals/${terminalB.id}/task`,
+    ).send({ status: 'in_progress' });
+    expect(liveStatus.status).toBe(200);
+    const locked = await authorized(
+      'patch',
+      `/api/sessions/${sessionId}/terminals/${terminalB.id}/task`,
+    ).send({ description: 'Change after launch' });
+    expect(locked.status).toBe(409);
+    expect(locked.body.error.code).toBe('task_assignment_locked');
+    await authorized('post', `/api/sessions/${sessionId}/stop`);
+
+    const updated = await authorized(
+      'patch',
+      `/api/sessions/${sessionId}/terminals/${terminalA.id}/task`,
+    ).send({
+      declaredFileScope: ['apps/web/src'],
+      status: 'in_progress',
+    });
+    expect(updated.status).toBe(200);
+    expect(
+      updated.body.session.terminals.find(
+        (terminal: { id: string }) => terminal.id === terminalA.id,
+      ).task,
+    ).toMatchObject({
+      declaredFileScope: ['apps/web/src'],
+      status: 'in_progress',
+    });
+
+    const overlap = await authorized(
+      'patch',
+      `/api/sessions/${sessionId}/terminals/${terminalB.id}/task`,
+    ).send({ declaredFileScope: ['apps/web/src/components'] });
+    expect(overlap.status).toBe(409);
+    expect(overlap.body.error.code).toBe('task_scope_overlap');
+
+    const cycle = await authorized(
+      'patch',
+      `/api/sessions/${sessionId}/terminals/${terminalB.id}/task`,
+    ).send({ dependencies: [terminalA.id] });
+    expect(cycle.status).toBe(400);
+    expect(cycle.body.error.code).toBe('task_dependency_cycle');
+  }, 30000);
+
   it('launches each CLI in a distinct worktree and preserves work across restart', async () => {
     const project = await makeProject('Runtime Project', true);
     addProfile('workspace-agent-a', 'stay');
@@ -899,9 +1071,11 @@ describe('isolated agent workspaces', () => {
     const created = await authorized('post', '/api/sessions').send({
       projectId: project.id,
       mode: 'custom',
+      workspaceMode: 'isolated',
       toolIds: ['workspace-agent-a', 'workspace-agent-b'],
     });
     expect(created.status).toBe(201);
+    expect(created.body.session.workspaceMode).toBe('isolated');
     const sessionId = created.body.session.id as string;
     const [terminalA, terminalB] = created.body.session.terminals as Array<{
       id: string;
@@ -921,6 +1095,12 @@ describe('isolated agent workspaces', () => {
         (terminal: { status: string }) => terminal.status === 'running',
       );
     }, 'Both isolated CLI processes did not reach running');
+    await waitUntil(
+      () =>
+        fs.existsSync(evidenceFor('workspace-agent-a')) &&
+        fs.existsSync(evidenceFor('workspace-agent-b')),
+      'Both isolated CLI processes did not write their workspace evidence',
+    );
 
     const evidenceA = JSON.parse(fs.readFileSync(evidenceFor('workspace-agent-a'), 'utf8')) as {
       cwd: string;
@@ -972,7 +1152,191 @@ describe('isolated agent workspaces', () => {
     await authorized('post', `/api/sessions/${sessionId}/stop`);
   }, 30000);
 
-  it('refuses multi-CLI sessions outside a Git repository without launching processes', async () => {
+  it('creates shared sessions without inspecting Git and adds multiple terminals in the same folder without stopping existing PTYs', async () => {
+    const project = await makeProject('Shared Folder Project', false);
+    addProfile('workspace-shared-a', 'stay');
+    addProfile('workspace-shared-b', 'stay');
+    addProfile('workspace-shared-c', 'stay');
+
+    const created = await authorized('post', '/api/sessions').send({
+      projectId: project.id,
+      mode: 'custom',
+      workspaceMode: 'shared',
+      toolIds: ['workspace-shared-a'],
+    });
+    expect(created.status).toBe(201);
+    const sessionId = created.body.session.id as string;
+    expect(created.body.session.workspaceMode).toBe('shared');
+    expect(created.body.session.terminals[0].workspace).toBeNull();
+    await waitUntil(
+      async () => (await getSession(sessionId)).terminals[0].status === 'running',
+      'Initial shared-folder terminal did not start',
+    );
+    const pidA = (await getSession(sessionId)).terminals[0].pid as number;
+
+    const addedB = await authorized('post', `/api/sessions/${sessionId}/terminals`).send({
+      toolId: 'workspace-shared-b',
+    });
+    expect(addedB.status).toBe(201);
+    expect(addedB.body.session.workspaceMode).toBe('shared');
+    expect(addedB.body.session.terminals).toHaveLength(2);
+    expect(addedB.body.session.terminals.every((terminal: { workspace: unknown }) => terminal.workspace === null)).toBe(true);
+    expect(
+      (db.prepare('SELECT workspace_mode FROM sessions WHERE id = ?').get(sessionId) as { workspace_mode: string }).workspace_mode,
+    ).toBe('shared');
+    await waitUntil(
+      () => fs.existsSync(evidenceFor('workspace-shared-b')),
+      'Second shared-folder terminal did not start',
+    );
+    const evidenceB = JSON.parse(fs.readFileSync(evidenceFor('workspace-shared-b'), 'utf8')) as { cwd: string };
+    expect(evidenceB.cwd).toBe(project.path);
+    const stillLiveA = (await getSession(sessionId)).terminals[0];
+    expect(stillLiveA.pid).toBe(pidA);
+    expect(isAlive(pidA)).toBe(true);
+
+    const addedC = await authorized('post', `/api/sessions/${sessionId}/terminals`).send({
+      toolId: 'workspace-shared-c',
+    });
+    expect(addedC.status).toBe(201);
+    await waitUntil(
+      () => fs.existsSync(evidenceFor('workspace-shared-c')),
+      'Third shared-folder terminal did not start',
+    );
+    const evidenceC = JSON.parse(fs.readFileSync(evidenceFor('workspace-shared-c'), 'utf8')) as { cwd: string };
+    expect(evidenceC.cwd).toBe(project.path);
+    const all = await getSession(sessionId);
+    expect(all.terminals).toHaveLength(3);
+    expect(all.terminals.every((terminal: { workspace: unknown }) => terminal.workspace === null)).toBe(true);
+    expect(all.terminals[0].pid).toBe(pidA);
+    expect(isAlive(pidA)).toBe(true);
+    expect(db.prepare('SELECT COUNT(*) AS count FROM agent_workspaces').get()).toEqual({ count: 0 });
+    await authorized('post', `/api/sessions/${sessionId}/stop`);
+  }, 30000);
+
+  it('adds a terminal to an isolated session in a new owned worktree', async () => {
+    const project = await makeProject('Add Isolated Terminal', true);
+    addProfile('workspace-add-a', 'stay');
+    addProfile('workspace-add-b', 'stay');
+    addProfile('workspace-add-c', 'stay');
+    const created = await authorized('post', '/api/sessions').send({
+      projectId: project.id,
+      mode: 'custom',
+      workspaceMode: 'isolated',
+      toolIds: ['workspace-add-a', 'workspace-add-b'],
+    });
+    expect(created.status).toBe(201);
+    const sessionId = created.body.session.id as string;
+    await waitUntil(
+      async () =>
+        (await getSession(sessionId)).terminals.every(
+          (terminal: { status: string }) => terminal.status === 'running',
+        ),
+      'Initial isolated terminals did not start',
+    );
+
+    const added = await authorized('post', `/api/sessions/${sessionId}/terminals`).send({
+      toolId: 'workspace-add-c',
+    });
+    expect(added.status).toBe(201);
+    const terminals = added.body.session.terminals as Array<{
+      id: string;
+      toolProfileId: string;
+      status: string;
+      workspace: { path: string; workingDirectory: string; status: string };
+    }>;
+    expect(terminals).toHaveLength(3);
+    expect(terminals.every((terminal) => terminal.workspace.status === 'ready')).toBe(true);
+    expect(new Set(terminals.map((terminal) => terminal.workspace.path)).size).toBe(3);
+    const newTerminal = terminals.find(
+      (terminal) => terminal.toolProfileId === 'workspace-add-c',
+    )!;
+    await waitUntil(
+      () => fs.existsSync(evidenceFor('workspace-add-c')),
+      'Added CLI process did not start',
+    );
+    const evidence = JSON.parse(fs.readFileSync(evidenceFor('workspace-add-c'), 'utf8')) as {
+      cwd: string;
+    };
+    expect(evidence.cwd).toBe(newTerminal.workspace.workingDirectory);
+
+    const stopped = await authorized('post', `/api/sessions/${sessionId}/stop`);
+    expect(stopped.status).toBe(200);
+  }, 30000);
+
+  it('adds an isolated terminal without stopping or reassigning an existing worktree', async () => {
+    const project = await makeProject('Add Isolated Terminals', true);
+    addProfile('workspace-convert-a', 'stay');
+    addProfile('workspace-convert-b', 'stay');
+    const created = await authorized('post', '/api/sessions').send({
+      projectId: project.id,
+      mode: 'custom',
+      workspaceMode: 'isolated',
+      toolIds: ['workspace-convert-a'],
+    });
+    const sessionId = created.body.session.id as string;
+    const originalTerminalId = created.body.session.terminals[0].id as string;
+    await waitUntil(
+      async () => (await getSession(sessionId)).terminals[0].status === 'running',
+      'Single isolated CLI terminal did not start',
+    );
+    const originalBeforeAdd = (await getSession(sessionId)).terminals[0];
+    const originalPid = originalBeforeAdd.pid as number;
+
+    const added = await authorized('post', `/api/sessions/${sessionId}/terminals`).send({
+      toolId: 'workspace-convert-b',
+    });
+    expect(added.status).toBe(201);
+    expect(added.body.session.workspaceMode).toBe('isolated');
+    const original = added.body.session.terminals.find(
+      (terminal: { id: string }) => terminal.id === originalTerminalId,
+    );
+    const newTerminal = added.body.session.terminals.find(
+      (terminal: { toolProfileId: string }) =>
+        terminal.toolProfileId === 'workspace-convert-b',
+    );
+    expect(original.workspace.status).toBe('ready');
+    expect(newTerminal.workspace.status).toBe('ready');
+    expect(original.workspace.path).toBe(originalBeforeAdd.workspace.path);
+    expect(original.workspace.workingDirectory).toBe(originalBeforeAdd.workspace.workingDirectory);
+    expect(original.pid).toBe(originalPid);
+    expect(isAlive(originalPid)).toBe(true);
+    expect(original.restartCount).toBe(originalBeforeAdd.restartCount);
+
+    fs.rmSync(evidenceFor('workspace-convert-a'), { force: true });
+    const restarted = await authorized(
+      'post',
+      `/api/sessions/${sessionId}/terminals/${originalTerminalId}/restart`,
+    );
+    expect(restarted.status).toBe(200);
+    await waitUntil(
+      () => fs.existsSync(evidenceFor('workspace-convert-a')),
+      'Original CLI did not restart',
+    );
+    const restartedEvidence = JSON.parse(
+      fs.readFileSync(evidenceFor('workspace-convert-a'), 'utf8'),
+    ) as { cwd: string };
+    expect(restartedEvidence.cwd).toBe(original.workspace.workingDirectory);
+    await authorized('post', `/api/sessions/${sessionId}/stop`);
+  }, 30000);
+
+  it('allows multiple shared-folder terminals outside Git and does not create worktree records', async () => {
+    const project = await makeProject('Shared Non-Git Project', false);
+    addProfile('workspace-non-git-shared-a', 'stay');
+    addProfile('workspace-non-git-shared-b', 'stay');
+    const response = await authorized('post', '/api/sessions').send({
+      projectId: project.id,
+      mode: 'custom',
+      workspaceMode: 'shared',
+      toolIds: ['workspace-non-git-shared-a', 'workspace-non-git-shared-b'],
+    });
+    expect(response.status).toBe(201);
+    expect(response.body.session.workspaceMode).toBe('shared');
+    expect(response.body.session.terminals.every((terminal: { workspace: unknown }) => terminal.workspace === null)).toBe(true);
+    expect(db.prepare('SELECT COUNT(*) AS count FROM agent_workspaces').get()).toEqual({ count: 0 });
+    await authorized('post', `/api/sessions/${response.body.session.id}/stop`);
+  }, 20000);
+
+  it('refuses multi-CLI isolated sessions outside a Git repository without saving records or launching processes', async () => {
     const project = await makeProject('Non-Git Project', false);
     addProfile('workspace-non-git-a', 'stay');
     addProfile('workspace-non-git-b', 'stay');
@@ -980,6 +1344,7 @@ describe('isolated agent workspaces', () => {
     const response = await authorized('post', '/api/sessions').send({
       projectId: project.id,
       mode: 'custom',
+      workspaceMode: 'isolated',
       toolIds: ['workspace-non-git-a', 'workspace-non-git-b'],
     });
 
@@ -999,6 +1364,7 @@ describe('isolated agent workspaces', () => {
     const response = await authorized('post', '/api/sessions').send({
       projectId: project.id,
       mode: 'custom',
+      workspaceMode: 'isolated',
       toolIds: ['workspace-dirty-a', 'workspace-dirty-b'],
     });
 
@@ -1110,7 +1476,7 @@ describe('startup reconciliation and migration', () => {
     legacy.close();
 
     const migrated = openDatabase(legacyPath);
-    expect(migrated.pragma('user_version', { simple: true })).toBe(5);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(11);
     const tools = migrated
       .prepare('SELECT id, launch_verified FROM tool_profiles ORDER BY id')
       .all() as { id: string; launch_verified: number }[];
@@ -1119,9 +1485,9 @@ describe('startup reconciliation and migration', () => {
       { id: 'opencode', launch_verified: 0 },
     ]);
     const session = migrated
-      .prepare('SELECT mode, status FROM sessions WHERE id = ?')
-      .get('legacy-session') as { mode: string; status: string };
-    expect(session).toEqual({ mode: 'custom', status: 'running' });
+      .prepare('SELECT mode, status, workspace_mode FROM sessions WHERE id = ?')
+      .get('legacy-session') as { mode: string; status: string; workspace_mode: string | null };
+    expect(session).toEqual({ mode: 'custom', status: 'running', workspace_mode: null });
     const terminal = migrated
       .prepare(
         'SELECT process_status, process_pid, error_code, restart_count FROM session_terminals WHERE id = ?',
@@ -1138,6 +1504,9 @@ describe('startup reconciliation and migration', () => {
       error_code: null,
       restart_count: 0,
     });
+    expect(
+      (migrated.prepare("SELECT workspace_mode FROM sessions WHERE id = 'legacy-session'").get() as { workspace_mode: string | null }).workspace_mode,
+    ).toBeNull();
     migrated.close();
   });
 });

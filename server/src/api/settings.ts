@@ -18,7 +18,7 @@ const workspacePreferencesSchema = z
     selectedProjectId: idSchema.optional(),
     selectedSessionId: idSchema.optional(),
     maximizedTerminalId: idSchema.optional(),
-    terminalLayout: z.enum(['auto', 'single']).optional(),
+    terminalLayout: z.enum(['auto', 'single', 'horizontal', 'vertical', 'grid']).optional(),
   })
   .strict();
 

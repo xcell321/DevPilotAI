@@ -3,6 +3,7 @@ import path from 'node:path';
 import express, { type ErrorRequestHandler, type Express } from 'express';
 import { TOKEN_META_NAME } from '../../shared/protocol.cjs';
 import { createHealthHandler } from './api/health';
+import { createOrchestrationRouter } from './api/orchestration';
 import { createOverviewRouter } from './api/overview';
 import { createProjectsRouter } from './api/projects';
 import { createSessionsRouter } from './api/sessions';
@@ -15,8 +16,10 @@ import type { Db } from './db/types';
 import { requireToken } from './security/auth';
 import { apiOriginGuard } from './security/origin';
 import { createPtyLauncher } from './services/processLauncher';
+import { OrchestrationService } from './services/orchestration';
 import { ProcessManager } from './services/processManager';
 import { SessionService } from './services/sessions';
+import { WorkflowService } from './services/workflow';
 import type { TerminalSupport } from './terminalSupport';
 
 export interface CreateAppOptions {
@@ -26,6 +29,7 @@ export interface CreateAppOptions {
   terminalSupport: TerminalSupport;
   processManager?: ProcessManager;
   sessionService?: SessionService;
+  orchestrationService?: OrchestrationService;
 }
 
 export function createApp({
@@ -35,6 +39,7 @@ export function createApp({
   terminalSupport,
   processManager,
   sessionService: providedSessionService,
+  orchestrationService: providedOrchestrationService,
 }: CreateAppOptions): Express {
   const app = express();
   app.disable('x-powered-by');
@@ -59,6 +64,15 @@ export function createApp({
   const sessionService =
     providedSessionService ??
     new SessionService(db, manager, config.maxTerminalsPerSession, config.runtimeDir);
+  const orchestrationService =
+    providedOrchestrationService ??
+    new OrchestrationService({
+      db,
+      sessions: sessionService,
+      maxConcurrentAgents: config.maxConcurrentAgents,
+      runtimeDir: config.runtimeDir,
+    });
+  const workflowService = new WorkflowService(db, sessionService, orchestrationService);
 
   app.get('/api/health', createHealthHandler(config, db, terminalSupport));
   app.use(
@@ -67,6 +81,11 @@ export function createApp({
     createOverviewRouter(db, sessionService.maxTerminalsPerSession),
   );
   app.use('/api/sessions', requireToken(token), createSessionsRouter(sessionService));
+  app.use(
+    '/api/orchestration',
+    requireToken(token),
+    createOrchestrationRouter(orchestrationService, sessionService, workflowService),
+  );
   app.use('/api/terminals', requireToken(token), createTerminalsRouter(sessionService));
   app.use('/api/tools', requireToken(token), createToolsRouter(db));
   app.use('/api/projects', requireToken(token), createProjectsRouter(db));

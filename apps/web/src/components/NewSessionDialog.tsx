@@ -1,7 +1,13 @@
 import { Loader2, X } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { apiGet, apiPost } from '../lib/api';
-import type { Project, SessionMode, SessionSummary, ToolProfile } from '../lib/types';
+import type {
+  Project,
+  SessionMode,
+  SessionSummary,
+  ToolProfile,
+  WorkspaceMode,
+} from '../lib/types';
 import {
   loadWorkspacePreferences,
   saveWorkspacePreferences,
@@ -19,6 +25,12 @@ interface NewSessionDialogProps {
   maxTerminals: number | null;
   limitsLoading: boolean;
   onCreated: (session: SessionSummary) => void;
+}
+
+interface TaskDraftForm {
+  description: string;
+  scope: string;
+  dependencies: string[];
 }
 
 function quickCandidate(tools: ToolProfile[]): ToolProfile | null {
@@ -49,7 +61,9 @@ export function NewSessionDialog({
   onCreated,
 }: NewSessionDialogProps) {
   const [mode, setMode] = useState<SessionMode>('quick');
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode | ''>('');
   const [selected, setSelected] = useState<string[]>([]);
+  const [taskDrafts, setTaskDrafts] = useState<Record<string, TaskDraftForm>>({});
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [projectId, setProjectId] = useState('');
@@ -62,7 +76,9 @@ export function NewSessionDialog({
   useEffect(() => {
     if (!open) return;
     setMode('quick');
+    setWorkspaceMode('');
     setSelected(quickSelection(toolsRef.current));
+    setTaskDrafts({});
     setTitle('');
     setSubmitError(null);
     setSubmitting(false);
@@ -148,6 +164,8 @@ export function NewSessionDialog({
     startBlockedReason = 'Register a project before starting a session.';
   } else if (!selectedProject) {
     startBlockedReason = 'Select a project.';
+  } else if (!workspaceMode) {
+    startBlockedReason = 'Choose Shared Folder or Isolated Worktrees.';
   } else if (selectedProject.pathStatus !== 'ok') {
     startBlockedReason =
       selectedProject.pathStatus === 'missing'
@@ -173,13 +191,33 @@ export function NewSessionDialog({
       const body: {
         projectId: string;
         mode: SessionMode;
+        workspaceMode: WorkspaceMode;
         toolIds?: string[];
+        tasks?: Array<{
+          toolId: string;
+          description: string;
+          declaredFileScope: string[];
+          dependencies: string[];
+        }>;
         title?: string;
       } = {
         projectId: selectedProject.id,
         mode,
+        workspaceMode: workspaceMode as WorkspaceMode,
       };
       if (mode === 'custom') body.toolIds = selected;
+      body.tasks = selectedTools.map((tool) => {
+        const draft = taskDrafts[tool.id];
+        return {
+          toolId: tool.id,
+          description: draft?.description ?? '',
+          declaredFileScope: (draft?.scope ?? '')
+            .split(/\r?\n/)
+            .map((entry) => entry.trim())
+            .filter(Boolean),
+          dependencies: draft?.dependencies ?? [],
+        };
+      });
       if (title.trim()) body.title = title.trim();
 
       const result = await apiPost<{ session: SessionSummary }>('/api/sessions', body);
@@ -368,6 +406,43 @@ export function NewSessionDialog({
             </fieldset>
 
             <fieldset>
+              <legend className="mb-2 text-xs font-medium text-muted">Workspace mode</legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {([
+                  ['shared', 'Shared Folder', 'Every CLI uses the selected project folder. Concurrent edits can conflict or overwrite each other.'],
+                  ['isolated', 'Isolated Worktrees', 'Each CLI gets its own Git worktree. Requires a clean, committed Git repository.'],
+                ] as const).map(([value, label, description]) => (
+                  <label
+                    key={value}
+                    className={`cursor-pointer rounded-lg border px-3 py-2.5 text-sm ${
+                      workspaceMode === value
+                        ? 'border-primary bg-primary-soft text-ink'
+                        : 'border-line bg-panel-2 text-muted'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="workspace-mode"
+                      value={value}
+                      checked={workspaceMode === value}
+                      onChange={() => setWorkspaceMode(value)}
+                      disabled={submitting}
+                      className="sr-only"
+                      data-testid={`workspace-mode-${value}`}
+                    />
+                    <span className="block font-medium">{label}</span>
+                    <span className="mt-0.5 block text-[11px] text-muted">{description}</span>
+                  </label>
+                ))}
+              </div>
+              {workspaceMode === 'shared' ? (
+                <p className="mt-2 rounded-lg border border-line bg-warn-soft px-3 py-2 text-[11px] text-warn">
+                  Shared-folder agents are not isolated from one another's file changes. They may conflict or overwrite edits.
+                </p>
+              ) : null}
+            </fieldset>
+
+            <fieldset>
               <legend className="mb-2 flex items-center justify-between gap-2 text-xs font-medium text-muted">
                 <span>CLI profiles</span>
                 {mode === 'custom' && maxTerminals !== null ? (
@@ -448,6 +523,108 @@ export function NewSessionDialog({
                 </div>
               )}
             </fieldset>
+
+            <details className="rounded-lg border border-line bg-panel-2 px-3 py-2">
+              <summary className="cursor-pointer text-xs font-medium text-muted">
+                Advanced: assign tasks manually
+              </summary>
+              <fieldset className="mt-3">
+                <legend className="mb-2 text-xs font-medium text-muted">
+                  Per-agent descriptions, file scopes, and dependencies
+                </legend>
+                <p className="mb-3 text-[11px] text-muted">
+                  This is optional for manually configured sessions. Overlapping declared scopes
+                  are rejected by the backend. A dependent task stays queued until its
+                  dependencies are integrated.
+                </p>
+                {selectedTools.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-lineStrong px-3 py-2 text-xs text-muted">
+                    Select a CLI profile to configure its task.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedTools.map((tool) => {
+                      const draft = taskDrafts[tool.id] ?? {
+                        description: '',
+                        scope: '',
+                        dependencies: [],
+                      };
+                      const otherSelectedTools = selectedTools.filter(
+                        (candidateTool) => candidateTool.id !== tool.id,
+                      );
+                      return (
+                        <div
+                          key={tool.id}
+                          className="space-y-2 rounded-lg border border-line bg-panel p-3"
+                        >
+                          <p className="text-xs font-medium text-ink">{tool.displayName}</p>
+                          <label className="block text-[11px] text-muted">
+                            Task description
+                            <textarea
+                              className="input mt-1 min-h-16 w-full resize-y"
+                              value={draft.description}
+                              maxLength={4000}
+                              disabled={submitting}
+                              placeholder="Describe this agent's independent task"
+                              onChange={(event) =>
+                                setTaskDrafts((current) => ({
+                                  ...current,
+                                  [tool.id]: { ...draft, description: event.target.value },
+                                }))
+                              }
+                            />
+                          </label>
+                          <label className="block text-[11px] text-muted">
+                            Declared files or folders (one repository-relative path per line)
+                            <textarea
+                              className="input mt-1 min-h-14 w-full resize-y font-mono"
+                              value={draft.scope}
+                              disabled={submitting}
+                              placeholder={'apps/web/src\nshared/api-types.d.cts'}
+                              onChange={(event) =>
+                                setTaskDrafts((current) => ({
+                                  ...current,
+                                  [tool.id]: { ...draft, scope: event.target.value },
+                                }))
+                              }
+                            />
+                          </label>
+                          {otherSelectedTools.length > 0 ? (
+                            <label className="block text-[11px] text-muted">
+                              Depends on (recorded task dependencies)
+                              <select
+                                className="input mt-1 min-h-16 w-full"
+                                multiple
+                                value={draft.dependencies}
+                                disabled={submitting}
+                                onChange={(event) =>
+                                  setTaskDrafts((current) => ({
+                                    ...current,
+                                    [tool.id]: {
+                                      ...draft,
+                                      dependencies: Array.from(
+                                        event.currentTarget.selectedOptions,
+                                        (option) => option.value,
+                                      ),
+                                    },
+                                  }))
+                                }
+                              >
+                                {otherSelectedTools.map((dependency) => (
+                                  <option key={dependency.id} value={dependency.id}>
+                                    {dependency.displayName}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </fieldset>
+            </details>
           </div>
 
           <div className="flex flex-col gap-2 border-t border-line px-5 py-4 sm:flex-row sm:items-center sm:justify-between">

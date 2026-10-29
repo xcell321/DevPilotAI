@@ -179,6 +179,10 @@ export class ProcessManager {
     return this.live.size;
   }
 
+  get maxLiveCount(): number {
+    return this.maxLive;
+  }
+
   hasLive(terminalId: string): boolean {
     return this.live.has(terminalId);
   }

@@ -5,6 +5,7 @@ export interface ToolDefinition {
   executableNames: string[];
   knownPaths: string[];
   probeArgs: string[] | null;
+  fixedArgs?: string[];
   enabled: boolean;
   defaultOnQuickStart: boolean;
   launchVerified: boolean;
@@ -99,13 +100,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       '~/.local/bin/opencode',
     ],
     probeArgs: ['--version'],
+    fixedArgs: [],
     enabled: false,
     defaultOnQuickStart: false,
-    launchVerified: false,
+    launchVerified: true,
     authGuidance:
       'Run opencode auth login or configure providers in ~/.local/share/opencode/auth.json.',
     notes:
-      'The interactive TUI renders in xterm.js once its pixel-size query is answered; disabled pending formal launch verification.',
+      'Interactive launch verified with original full-screen TUI. Tested with node-pty (prompt, keyboard shortcuts, commands, and resize responsive).',
   },
 ];
 

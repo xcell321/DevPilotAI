@@ -4,8 +4,9 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDatabase } from '../src/db';
 import type { Db } from '../src/db/types';
+import { TOOL_DEFINITIONS } from '../src/services/toolCatalog';
 import { resolveToolCommand } from '../src/services/toolDiscovery';
-import { getToolProfile, seedToolProfiles } from '../src/services/toolRegistry';
+import { getToolProfile, seedToolProfiles, setToolEnabled } from '../src/services/toolRegistry';
 
 let tempDir: string;
 let db: Db;
@@ -149,6 +150,26 @@ describe('tool executable discovery', () => {
 });
 
 describe('seeded tool profiles', () => {
+  it('reports a verified but disabled profile as launch-verified with an actionable reason', () => {
+    // A working CLI must never look unverified just because it is disabled, and
+    // the UI needs the real reason instead of a generic "unavailable".
+    const executable = writeFile(path.join(tempDir, 'opencode binaries', 'opencode.exe'));
+    seedToolProfiles(db, isolatedEnv({ DEVPILOT_OPENCODE_PATH: executable }));
+
+    const disabled = getToolProfile(db, 'opencode');
+    expect(disabled?.launchVerified).toBe(true);
+    expect(disabled?.enabled).toBe(false);
+    expect(disabled?.launchable).toBe(false);
+    expect(disabled?.launchReason).toBe('Disabled in the CLI registry.');
+    expect(disabled?.lastStatus).toBe('available');
+
+    setToolEnabled(db, 'opencode', true);
+    const enabled = getToolProfile(db, 'opencode');
+    expect(enabled?.launchable).toBe(true);
+    expect(enabled?.launchReason).toBeNull();
+    expect(TOOL_DEFINITIONS.find((tool) => tool.id === 'opencode')?.launchVerified).toBe(true);
+  });
+
   it('keeps an invalid explicit command visible and marks it missing', () => {
     const configured = path.join(tempDir, 'not installed', 'claude & calc.exe');
     const env = isolatedEnv({ DEVPILOT_CLAUDE_PATH: configured });

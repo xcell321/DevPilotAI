@@ -436,6 +436,7 @@ try {
     { timeout: 10000 },
   );
   await page.getByRole('radio', { name: /Custom session/ }).check({ force: true });
+  await page.getByTestId('workspace-mode-isolated').check({ force: true });
   await sessionDialog.getByText('0 of 3 selected', { exact: true }).waitFor({ timeout: 10000 });
   assert(
     (await sessionDialog.textContent())?.includes('Select up to 3 profiles'),
@@ -517,6 +518,10 @@ try {
     `Running terminal pids are not alive: A=${terminalA.status}/${firstPidA}/${isAlive(firstPidA)}, B=${terminalB.status}/${firstPidB}/${isAlive(firstPidB)}, errors=${terminalA.lastError ?? ''}|${terminalB.lastError ?? ''}`,
   );
   await page.getByTestId(`session-card-${session.id}`).waitFor();
+  await waitUntil(async () => {
+    const text = await page.getByTestId(`session-card-${session.id}`).textContent();
+    return text.includes('Running');
+  }, 'Session running state is missing');
   const sessionCardText = await page.getByTestId(`session-card-${session.id}`).textContent();
   assert(sessionCardText.includes('Running'), 'Session running state is missing');
   assert(

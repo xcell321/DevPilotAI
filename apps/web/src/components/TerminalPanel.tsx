@@ -2,6 +2,10 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
   Eraser,
   Loader2,
   Maximize2,
@@ -10,11 +14,13 @@ import {
   Square,
   Wifi,
   WifiOff,
+  X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import protocol from '../../../../shared/protocol.json';
 import { localToken } from '../lib/api';
 import type { SessionTerminal, TerminalDisplayStatus } from '../lib/types';
+import type { TerminalSplitPlacement } from '../lib/terminalLayout';
 import { TerminalStatusBadge } from './Badge';
 
 const { WS_TOKEN_PROTOCOL_PREFIX } = protocol;
@@ -22,9 +28,17 @@ const { WS_TOKEN_PROTOCOL_PREFIX } = protocol;
 interface TerminalPanelProps {
   sessionId: string;
   terminal: SessionTerminal;
+  workingDirectory: string;
   visible: boolean;
   maximized: boolean;
+  active: boolean;
+  splitDisabled?: boolean;
+  actionsDisabled?: boolean;
   action: 'stop' | 'restart' | null;
+  onSplit?: (placement: TerminalSplitPlacement) => void;
+  onActivate: () => void;
+  onEditTask: () => void;
+  onClose: () => void;
   onStop: () => void;
   onRestart: () => void;
   onToggleMaximize: () => void;
@@ -82,9 +96,17 @@ function connectionLabel(state: ConnectionState, live: boolean): string {
 export function TerminalPanel({
   sessionId,
   terminal,
+  workingDirectory,
   visible,
   maximized,
+  active,
+  splitDisabled,
+  actionsDisabled = false,
   action,
+  onSplit,
+  onActivate,
+  onEditTask,
+  onClose,
   onStop,
   onRestart,
   onToggleMaximize,
@@ -134,7 +156,10 @@ export function TerminalPanel({
 
     let resizeFrame = 0;
     const fit = () => {
+      if (resizeFrame) window.cancelAnimationFrame(resizeFrame);
       resizeFrame = window.requestAnimationFrame(() => {
+        resizeFrame = 0;
+        if (host.clientWidth === 0 || host.clientHeight === 0) return;
         try {
           fitAddon.fit();
         } catch {
@@ -144,6 +169,15 @@ export function TerminalPanel({
     };
 
     term.open(host);
+    try {
+      fitAddon.fit();
+    } catch {
+      // The panel can be hidden while the layout changes.
+    }
+    if (term.cols > 0 && term.rows > 0) {
+      dimensionsRef.current = { cols: term.cols, rows: term.rows };
+      setDimensions({ cols: term.cols, rows: term.rows });
+    }
     fit();
     terminalRef.current = term;
     fitRef.current = fitAddon;
@@ -172,16 +206,14 @@ export function TerminalPanel({
   }, [terminal.id]);
 
   useEffect(() => {
-    if (maximized) {
-      window.requestAnimationFrame(() => {
-        try {
-          fitRef.current?.fit();
-          terminalRef.current?.focus();
-        } catch {
-          // The panel is still settling into the maximized grid.
-        }
-      });
-    }
+    window.requestAnimationFrame(() => {
+      try {
+        fitRef.current?.fit();
+        if (maximized) terminalRef.current?.focus();
+      } catch {
+        // The panel is still settling into the grid.
+      }
+    });
   }, [maximized]);
 
   useEffect(() => {
@@ -248,9 +280,13 @@ export function TerminalPanel({
         attempts = 0;
         setConnection('connected');
         setNotice(null);
-        const size = dimensionsRef.current;
-        if (size.cols > 0 && size.rows > 0) {
-          socketSend(socket, { type: 'resize', cols: size.cols, rows: size.rows });
+        const term = terminalRef.current;
+        const currentCols =
+          dimensionsRef.current.cols > 0 ? dimensionsRef.current.cols : (term?.cols ?? 0);
+        const currentRows =
+          dimensionsRef.current.rows > 0 ? dimensionsRef.current.rows : (term?.rows ?? 0);
+        if (currentCols > 0 && currentRows > 0) {
+          socketSend(socket, { type: 'resize', cols: currentCols, rows: currentRows });
         }
         terminalRef.current?.focus();
       }, { signal: abort.signal });
@@ -347,103 +383,163 @@ export function TerminalPanel({
 
   return (
     <article
-      className={`terminal-panel panel flex min-h-0 flex-col overflow-hidden ${
-        maximized ? 'terminal-panel-maximized' : ''
-      }`}
-      style={{ display: visible ? undefined : 'none' }}
+      className={`terminal-panel panel flex h-full w-full min-h-0 flex-col overflow-hidden ${
+        active ? 'terminal-panel-active' : ''
+      } ${maximized ? 'terminal-panel-maximized' : ''}`}
+      style={{ display: visible || maximized ? undefined : 'none' }}
+      onPointerDownCapture={onActivate}
+      onFocusCapture={onActivate}
       data-testid={`terminal-panel-${terminal.id}`}
       data-pty-size={
         ptyDimensions.cols > 0 ? `${ptyDimensions.cols}x${ptyDimensions.rows}` : undefined
       }
     >
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line bg-panel px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <h2 className="truncate text-sm font-semibold text-ink">{terminal.toolName}</h2>
-          <span data-testid={`terminal-status-${terminal.id}`}>
-            <TerminalStatusBadge status={status} />
-          </span>
-          <span
-            className={`inline-flex items-center gap-1 rounded-full border border-line px-2 py-0.5 text-[11px] ${
-              connection === 'connected' ? 'text-ok' : 'text-muted'
-            }`}
-            data-testid={`terminal-connection-${terminal.id}`}
-          >
-            {connection === 'connected' ? (
-              <Wifi className="h-3 w-3" />
-            ) : (
-              <WifiOff className="h-3 w-3" />
-            )}
-            {connectionLabel(connection, live)}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-1">
-          <span
-            className="hidden px-1 text-[11px] text-muted sm:inline"
-            data-testid={`terminal-dimensions-${terminal.id}`}
-          >
-            {dimensions.cols > 0 ? `${dimensions.cols}x${dimensions.rows}` : '--'}
-          </span>
-          <button
-            type="button"
-            className="btn px-2 py-1"
-            onClick={handleClear}
-            title="Clear display"
-            aria-label={`Clear ${terminal.toolName} display`}
-            data-testid={`clear-terminal-${terminal.id}`}
-          >
-            <Eraser className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            className="btn px-2 py-1"
-            onClick={onRestart}
-            disabled={action !== null}
-            title="Restart terminal"
-            aria-label={`Restart ${terminal.toolName}`}
-            data-testid={`restart-terminal-${terminal.id}`}
-          >
-            {action === 'restart' ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RotateCw className="h-3.5 w-3.5" />
-            )}
-          </button>
-          <button
-            type="button"
-            className="btn px-2 py-1 text-danger"
-            onClick={onStop}
-            disabled={action !== null || !live}
-            title="Stop terminal"
-            aria-label={`Stop ${terminal.toolName}`}
-            data-testid={`stop-terminal-${terminal.id}`}
-          >
-            {action === 'stop' ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Square className="h-3.5 w-3.5" />
-            )}
-          </button>
-          <button
-            type="button"
-            className="btn px-2 py-1"
-            onClick={onToggleMaximize}
-            title={maximized ? 'Restore panel' : 'Maximize panel'}
-            aria-label={maximized ? 'Restore terminal panel' : 'Maximize terminal panel'}
-            data-testid={`maximize-terminal-${terminal.id}`}
-          >
-            {maximized ? (
-              <Minimize2 className="h-3.5 w-3.5" />
-            ) : (
-              <Maximize2 className="h-3.5 w-3.5" />
-            )}
-          </button>
+      <header className="terminal-panel-header shrink-0 border-b border-line bg-panel px-2 py-1">
+        <div className="flex min-w-max items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <h2 className="truncate text-sm font-semibold text-ink">{terminal.toolName}</h2>
+            {terminal.task ? (
+              <button
+                type="button"
+                className="max-w-36 truncate text-left text-[11px] text-muted hover:text-ink"
+                onClick={onEditTask}
+                title={[
+                  terminal.task.description || 'Task unassigned',
+                  `State: ${terminal.task.state}`,
+                  terminal.task.blockedReason ? `Blocked: ${terminal.task.blockedReason}` : '',
+                  `Declared scope: ${terminal.task.declaredFileScope.join(', ') || 'none'}`,
+                  `Dependencies: ${terminal.task.dependencies.join(', ') || 'none'}`,
+                  `Validation: ${terminal.task.validationStatus}`,
+                  `Integration: ${terminal.task.integrationStatus}`,
+                ]
+                  .filter(Boolean)
+                  .join('\n')}
+                aria-label={`Edit task for ${terminal.toolName}`}
+                data-testid={`edit-task-${terminal.id}`}
+              >
+                {terminal.task.description || 'Assign task'}
+              </button>
+            ) : null}
+            <span data-testid={`terminal-status-${terminal.id}`}>
+              <TerminalStatusBadge status={status} />
+            </span>
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border border-line px-2 py-0.5 text-[11px] ${
+                connection === 'connected' ? 'text-ok' : 'text-muted'
+              }`}
+              data-testid={`terminal-connection-${terminal.id}`}
+            >
+              {connection === 'connected' ? (
+                <Wifi className="h-3 w-3" />
+              ) : (
+                <WifiOff className="h-3 w-3" />
+              )}
+              {connectionLabel(connection, live)}
+            </span>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-0.5 border-r border-line pr-1">
+              {([
+                ['left', ArrowLeft],
+                ['right', ArrowRight],
+                ['up', ArrowUp],
+                ['down', ArrowDown],
+              ] as const).map(([placement, Icon]) => (
+                <button
+                  key={placement}
+                  type="button"
+                  className="btn px-1.5 py-1"
+                  onClick={() => onSplit?.(placement)}
+                  disabled={splitDisabled || actionsDisabled}
+                  title={`Add terminal ${placement} of this panel`}
+                  aria-label={`Add terminal ${placement} of ${terminal.toolName}`}
+                  data-testid={`split-terminal-${placement}-${terminal.id}`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </button>
+              ))}
+            </div>
+            <span
+              className="hidden px-1 text-[11px] text-muted sm:inline"
+              data-testid={`terminal-dimensions-${terminal.id}`}
+            >
+              {dimensions.cols > 0 ? `${dimensions.cols}x${dimensions.rows}` : '--'}
+            </span>
+            <button
+              type="button"
+              className="btn px-2 py-1"
+              onClick={handleClear}
+              title="Clear display"
+              aria-label={`Clear ${terminal.toolName} display`}
+              data-testid={`clear-terminal-${terminal.id}`}
+            >
+              <Eraser className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className="btn px-2 py-1"
+              onClick={onRestart}
+              disabled={action !== null || actionsDisabled}
+              title="Restart terminal"
+              aria-label={`Restart ${terminal.toolName}`}
+              data-testid={`restart-terminal-${terminal.id}`}
+            >
+              {action === 'restart' ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RotateCw className="h-3.5 w-3.5" />
+              )}
+            </button>
+            <button
+              type="button"
+              className="btn px-2 py-1 text-danger"
+              onClick={onStop}
+              disabled={action !== null || actionsDisabled || !live}
+              title="Stop terminal"
+              aria-label={`Stop ${terminal.toolName}`}
+              data-testid={`stop-terminal-${terminal.id}`}
+            >
+              {action === 'stop' ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Square className="h-3.5 w-3.5" />
+              )}
+            </button>
+            <button
+              type="button"
+              className="btn px-2 py-1"
+              onClick={onToggleMaximize}
+              title={maximized ? 'Restore panel' : 'Maximize panel'}
+              aria-label={maximized ? 'Restore terminal panel' : 'Maximize terminal panel'}
+              data-testid={`maximize-terminal-${terminal.id}`}
+            >
+              {maximized ? (
+                <Minimize2 className="h-3.5 w-3.5" />
+              ) : (
+                <Maximize2 className="h-3.5 w-3.5" />
+              )}
+            </button>
+            <button
+              type="button"
+              className="btn px-2 py-1"
+              onClick={onClose}
+              disabled={actionsDisabled}
+              title="Close terminal panel and stop its process"
+              aria-label={`Close ${terminal.toolName} terminal`}
+              data-testid={`close-terminal-${terminal.id}`}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       </header>
 
       <div
         className="relative min-h-0 flex-1 bg-[#0a101c]"
-        onMouseDown={() => terminalRef.current?.focus()}
+        onMouseDown={() => {
+          onActivate();
+          terminalRef.current?.focus();
+        }}
       >
         <div
           ref={hostRef}
@@ -453,8 +549,16 @@ export function TerminalPanel({
         />
       </div>
 
-      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-line bg-panel px-3 py-1.5 text-[11px] text-muted">
-        <span className="truncate">
+      <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-line bg-panel px-2 py-1 text-[10px] text-muted">
+        <span className="min-w-0 flex-1 truncate mono" title={workingDirectory}>
+          {workingDirectory}
+        </span>
+        {terminal.workspace?.branchName ? (
+          <span className="max-w-32 shrink-0 truncate mono" title={terminal.workspace.branchName}>
+            {terminal.workspace.branchName}
+          </span>
+        ) : null}
+        <span className="max-w-[35%] shrink-0 truncate">
           {notice ??
             (terminal.lastError && !live
               ? terminal.lastError

@@ -41,6 +41,7 @@ interface SeedProfile {
   displayName: string;
   command: string;
   commandSource: 'configured' | 'discovered' | 'missing';
+  fixedArgsJson: string;
   enabled: boolean;
   defaultOnQuickStart: boolean;
   launchVerified: boolean;
@@ -65,6 +66,7 @@ function buildSeedProfiles(env: NodeJS.ProcessEnv): SeedProfile[] {
       displayName: tool.displayName,
       command: resolved.command,
       commandSource,
+      fixedArgsJson: JSON.stringify(tool.fixedArgs ?? []),
       enabled: tool.enabled,
       defaultOnQuickStart: tool.defaultOnQuickStart,
       launchVerified: tool.launchVerified,
@@ -93,7 +95,7 @@ export function seedToolProfiles(db: Db, env: NodeJS.ProcessEnv = process.env): 
       @displayName,
       @command,
       @commandSource,
-      '[]',
+      @fixedArgsJson,
       @enabled,
       @defaultOnQuickStart,
       @launchVerified,
@@ -105,6 +107,10 @@ export function seedToolProfiles(db: Db, env: NodeJS.ProcessEnv = process.env): 
       display_name = excluded.display_name,
       launch_verified = excluded.launch_verified,
       notes = excluded.notes,
+      fixed_args_json = CASE
+        WHEN tool_profiles.command_source = 'manual' THEN tool_profiles.fixed_args_json
+        ELSE excluded.fixed_args_json
+      END,
       enabled = CASE
         WHEN excluded.launch_verified = 0 THEN 0
         WHEN tool_profiles.launch_verified = 0 AND excluded.launch_verified = 1 THEN excluded.enabled

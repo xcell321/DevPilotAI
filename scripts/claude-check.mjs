@@ -216,15 +216,8 @@ try {
     (await page
       .locator(`[data-testid="terminal-screen-${terminalId}"] .xterm-rows`)
       .textContent()) ?? '';
-  const waitForTerminalText = (text, timeout = 30000) =>
-    page.waitForFunction(
-      ({ id, expected }) =>
-        globalThis.document
-          .querySelector(`[data-testid="terminal-screen-${id}"] .xterm-rows`)
-          ?.textContent?.includes(expected),
-      { id: terminalId, expected: text },
-      { timeout },
-    );
+  const terminalDimensions = async () =>
+    (await page.getByTestId(`terminal-dimensions-${terminalId}`).textContent()) ?? '';
   const focusTerminal = () =>
     page.getByTestId(`terminal-screen-${terminalId}`).click({ position: { x: 80, y: 60 } });
 
@@ -299,14 +292,43 @@ try {
   await page.setViewportSize({ width: 1280, height: 800 });
   console.log('PASS real Claude PTY acknowledged an xterm resize from the workspace');
 
+  /**
+   * The /status panel is taller than the visible terminal, so part of it lives
+   * in xterm scrollback. Walk the rendered terminal upwards and collect what is
+   * actually shown, instead of assuming a panel height or scroll position.
+   */
+  const collectTerminalOutput = async (required, maxPages = 14) => {
+    const screen = page.getByTestId(`terminal-screen-${terminalId}`);
+    const box = await screen.boundingBox();
+    if (!box) return await terminalText();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    let collected = await terminalText();
+    for (let page_ = 0; page_ < maxPages; page_ += 1) {
+      if (required.every((text) => collected.includes(text))) break;
+      await page.mouse.wheel(0, -3000);
+      await wait(250);
+      collected = `${collected}\n${await terminalText()}`;
+    }
+    return collected;
+  };
+
   await focusTerminal();
   await page.keyboard.type('/status');
   await page.keyboard.press('Enter');
-  await waitForTerminalText('Version:');
-  const statusText = await terminalText();
+  await wait(1500);
+  const statusText = await collectTerminalOutput(['Version:', 'Session kind:', 'cwd:']);
+  assert(
+    statusText.includes('Version:'),
+    `Claude status panel never rendered its version line (${await terminalDimensions()})`,
+  );
+  assert(statusText.includes('Version:'), 'Claude status panel is missing its version line');
   assert(statusText.includes('Session kind:'), 'Claude status panel is missing the session kind');
   assert(statusText.includes('interactive'), 'Claude status panel is not an interactive session');
   assert(statusText.includes('cwd:'), 'Claude status panel is missing the cwd');
+  assert(
+    statusText.includes(project.path),
+    'Claude status panel does not report the temporary project cwd',
+  );
   console.log('PASS /status ran inside Claude through the browser terminal');
 
   await page.keyboard.press('Escape');
@@ -371,6 +393,12 @@ try {
   console.error(`\nFAIL: ${error.message}`);
   if (page) {
     console.error(`Page URL: ${page.url()}`);
+    const terminalViewport = await page
+      .locator('.xterm-rows')
+      .first()
+      .textContent()
+      .catch(() => '');
+    if (terminalViewport) console.error(`Terminal viewport: ${terminalViewport.slice(-2000)}`);
     const bodyText = await page.locator('body').innerText().catch(() => '');
     console.error(`Page text: ${bodyText.slice(-4000)}`);
   }

@@ -59,7 +59,7 @@ export async function apiGet<T>(pathname: string, attempt = 0): Promise<T> {
 }
 
 async function apiSend<T>(
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   pathname: string,
   body?: unknown,
 ): Promise<T> {
@@ -98,6 +98,10 @@ async function apiSend<T>(
 
 export function apiPost<T>(pathname: string, body?: unknown): Promise<T> {
   return apiSend<T>('POST', pathname, body);
+}
+
+export function apiPut<T>(pathname: string, body: unknown): Promise<T> {
+  return apiSend<T>('PUT', pathname, body);
 }
 
 export function apiPatch<T>(pathname: string, body: unknown): Promise<T> {

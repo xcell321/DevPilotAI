@@ -6,8 +6,10 @@ import {
   runtimeFileFor,
 } from '../../shared/runtime-paths.cjs';
 import {
+  DEFAULT_MAX_CONCURRENT_AGENTS,
   DEFAULT_MAX_TERMINALS,
   DEFAULT_MAX_TERMINALS_PER_SESSION,
+  MAX_CONCURRENT_AGENTS,
   MAX_TERMINALS,
 } from './limits';
 
@@ -23,6 +25,7 @@ export interface AppConfig {
   tokenFile: string;
   maxTerminals: number;
   maxTerminalsPerSession: number;
+  maxConcurrentAgents: number;
   version: string;
 }
 
@@ -44,6 +47,12 @@ const envSchema = z.object({
     .min(1)
     .max(MAX_TERMINALS)
     .default(DEFAULT_MAX_TERMINALS_PER_SESSION),
+  DEVPILOT_MAX_CONCURRENT_AGENTS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_CONCURRENT_AGENTS)
+    .default(DEFAULT_MAX_CONCURRENT_AGENTS),
 });
 
 export const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
@@ -107,6 +116,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     value.DEVPILOT_MAX_TERMINALS_PER_SESSION,
     maxTerminals,
   );
+  const maxConcurrentAgents = Math.max(
+    1,
+    Math.min(value.DEVPILOT_MAX_CONCURRENT_AGENTS, MAX_CONCURRENT_AGENTS, maxTerminals),
+  );
 
   return {
     repoRoot,
@@ -120,6 +133,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     tokenFile: runtimeFileFor(repoRoot, runtimeEnv),
     maxTerminals,
     maxTerminalsPerSession,
+    maxConcurrentAgents,
     version: readServerVersion(),
   };
 }

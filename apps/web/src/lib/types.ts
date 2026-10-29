@@ -1,16 +1,30 @@
 import type { ToolProfile } from '../../../../shared/api-types.cjs';
 
 export type {
+  AgentTaskIntegrationStatus,
+  AgentTaskState,
+  AgentTaskStatus,
+  AgentTaskSummary,
+  AgentTaskValidationStatus,
+  OrchestrationCapacity,
+  OrchestrationSettings,
   Project,
   ProjectPathStatus,
   SessionMode,
+  SessionOrchestrationSummary,
   SessionStatus,
   SessionSummary,
   SessionTerminal,
+  TaskIntegrationAttempt,
+  TaskValidationResult,
   TerminalDisplayStatus,
   TerminalLayout,
   ToolProfile,
   ToolStatus,
+  ValidationCommandConfig,
+  WorkflowPlanSummary,
+  WorkflowSummary,
+  WorkspaceMode,
   WorkspacePreferences,
 } from '../../../../shared/api-types.cjs';
 

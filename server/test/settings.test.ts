@@ -96,7 +96,7 @@ describe('workspace preferences', () => {
       selectedProjectId: 'project-1',
       selectedSessionId: 'session-1',
       maximizedTerminalId: 'terminal-1',
-      terminalLayout: 'single',
+      terminalLayout: 'grid',
     });
     expect(saved.status).toBe(200);
     expect(saved.body.preferences).toEqual({
@@ -104,7 +104,7 @@ describe('workspace preferences', () => {
       selectedProjectId: 'project-1',
       selectedSessionId: 'session-1',
       maximizedTerminalId: 'terminal-1',
-      terminalLayout: 'single',
+      terminalLayout: 'grid',
     });
 
     const dbPath = config.dbPath;

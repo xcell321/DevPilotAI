@@ -10,9 +10,29 @@ function createSessionSchema(maxTerminalsPerSession: number) {
     .object({
       projectId: z.string().trim().min(1, 'Select a project.').max(MAX_ID_LENGTH),
       mode: z.enum(['quick', 'custom']),
+      workspaceMode: z.enum(['shared', 'isolated']).optional(),
       toolIds: z
         .array(z.string().trim().min(1).max(MAX_ID_LENGTH))
         .max(maxTerminalsPerSession, 'Too many CLI profiles selected.')
+        .optional(),
+      tasks: z
+        .array(
+          z
+            .object({
+              toolId: z.string().trim().min(1).max(MAX_ID_LENGTH),
+              description: z.string().max(4000).optional(),
+              declaredFileScope: z
+                .array(z.string().max(512))
+                .max(100)
+                .optional(),
+              dependencies: z
+                .array(z.string().trim().min(1).max(MAX_ID_LENGTH))
+                .max(32)
+                .optional(),
+            })
+            .strict(),
+        )
+        .max(maxTerminalsPerSession)
         .optional(),
       title: z
         .string()
@@ -77,6 +97,77 @@ export function createSessionsRouter(service: SessionService): Router {
   router.post('/:id/open', (req, res) => {
     try {
       res.json({ session: service.markOpened(req.params.id) });
+    } catch (error) {
+      sendApiError(res, error);
+    }
+  });
+
+  router.post('/:id/terminals', async (req, res) => {
+    try {
+      const input = parseBody(
+        z
+          .object({
+            toolId: z.string().trim().min(1).max(MAX_ID_LENGTH),
+            workspaceMode: z.enum(['shared', 'isolated']).optional(),
+            task: z
+              .object({
+                description: z.string().max(4000).optional(),
+                declaredFileScope: z
+                  .array(z.string().max(512))
+                  .max(100)
+                  .optional(),
+                dependencies: z
+                  .array(z.string().trim().min(1).max(MAX_ID_LENGTH))
+                  .max(32)
+                  .optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict(),
+        req.body,
+      );
+      const session = await service.addTerminal(req.params.id, input);
+      res.status(201).json({ session });
+    } catch (error) {
+      sendApiError(res, error);
+    }
+  });
+
+  router.patch('/:sessionId/terminals/:terminalId/task', (req, res) => {
+    try {
+      const input = parseBody(
+        z
+          .object({
+            description: z.string().max(4000).optional(),
+            declaredFileScope: z
+              .array(z.string().max(512))
+              .max(100)
+              .optional(),
+            dependencies: z
+              .array(z.string().trim().min(1).max(MAX_ID_LENGTH))
+              .max(32)
+              .optional(),
+            status: z
+              .enum([
+                'unassigned',
+                'planned',
+                'in_progress',
+                'completed',
+                'failed',
+                'cancelled',
+              ])
+              .optional(),
+          })
+          .strict(),
+        req.body,
+      );
+      const session = service.updateTask(
+        req.params.sessionId,
+        req.params.terminalId,
+        input,
+      );
+      res.json({ session });
     } catch (error) {
       sendApiError(res, error);
     }

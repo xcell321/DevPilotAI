@@ -1,6 +1,12 @@
 export const MAX_TERMINALS: number;
 export const DEFAULT_MAX_TERMINALS: number;
 export const DEFAULT_MAX_TERMINALS_PER_SESSION: number;
+export const MAX_CONCURRENT_AGENTS: number;
+export const DEFAULT_MAX_CONCURRENT_AGENTS: number;
+export const MAX_VALIDATION_COMMANDS: number;
+export const MAX_VALIDATION_TIMEOUT_MS: number;
+export const DEFAULT_VALIDATION_TIMEOUT_MS: number;
+export const MAX_PROTECTED_PATHS: number;
 export const MAX_TERMINAL_INPUT_BYTES: number;
 export const MAX_PATH_LENGTH: number;
 export const MAX_PROJECT_NAME_LENGTH: number;
@@ -11,6 +17,12 @@ declare const limits: {
   MAX_TERMINALS: number;
   DEFAULT_MAX_TERMINALS: number;
   DEFAULT_MAX_TERMINALS_PER_SESSION: number;
+  MAX_CONCURRENT_AGENTS: number;
+  DEFAULT_MAX_CONCURRENT_AGENTS: number;
+  MAX_VALIDATION_COMMANDS: number;
+  MAX_VALIDATION_TIMEOUT_MS: number;
+  DEFAULT_VALIDATION_TIMEOUT_MS: number;
+  MAX_PROTECTED_PATHS: number;
   MAX_TERMINAL_INPUT_BYTES: number;
   MAX_PATH_LENGTH: number;
   MAX_PROJECT_NAME_LENGTH: number;

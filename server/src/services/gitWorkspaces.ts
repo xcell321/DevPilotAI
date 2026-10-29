@@ -20,13 +20,35 @@ export interface GitWorkspacePaths {
   workingDirectory: string;
 }
 
-function runGit(cwd: string, args: string[]): Promise<string> {
+const AGENT_BRANCH_PREFIX = 'devpilot';
+
+export interface GitCommandResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+export interface GitCommandOptions {
+  timeoutMs?: number;
+  maxOutputBytes?: number;
+  env?: NodeJS.ProcessEnv;
+}
+
+/**
+ * Runs a Git command and resolves with its structured result instead of throwing
+ * on a non-zero exit, so callers can inspect machine-readable output.
+ */
+export function runGitCommand(
+  cwd: string,
+  args: string[],
+  options: GitCommandOptions = {},
+): Promise<GitCommandResult> {
   return new Promise((resolve, reject) => {
     let child: ReturnType<typeof spawn>;
     try {
       child = spawn('git', ['-C', cwd, ...args], {
         cwd: process.cwd(),
-        env: sanitizedEnv(),
+        env: { ...sanitizedEnv(), ...options.env },
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
@@ -36,32 +58,35 @@ function runGit(cwd: string, args: string[]): Promise<string> {
     }
 
     let stdout = '';
+    let stderr = '';
     let outputBytes = 0;
     let settled = false;
     let timer: NodeJS.Timeout | null = null;
+    const maxOutputBytes = options.maxOutputBytes ?? MAX_GIT_OUTPUT_BYTES;
 
-    const finish = (error: ApiError | null, output = '') => {
+    const finish = (error: ApiError | null, result?: GitCommandResult) => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
       if (error) reject(error);
-      else resolve(output.trim());
+      else resolve(result!);
     };
 
     timer = setTimeout(() => {
       killProcessTree(child.pid);
       finish(new ApiError(504, 'git_timeout', 'Git workspace setup timed out.'));
-    }, GIT_COMMAND_TIMEOUT_MS);
+    }, options.timeoutMs ?? GIT_COMMAND_TIMEOUT_MS);
 
     const collect = (target: 'stdout' | 'stderr', data: Buffer) => {
       if (settled) return;
       outputBytes += data.length;
-      if (outputBytes > MAX_GIT_OUTPUT_BYTES) {
+      if (outputBytes > maxOutputBytes) {
         killProcessTree(child.pid);
         finish(new ApiError(502, 'git_output_too_large', 'Git returned too much workspace data.'));
         return;
       }
       if (target === 'stdout') stdout += data.toString('utf8');
+      else stderr += data.toString('utf8');
     };
 
     child.stdout?.on('data', (data: Buffer) => collect('stdout', data));
@@ -79,15 +104,29 @@ function runGit(cwd: string, args: string[]): Promise<string> {
       );
     });
     child.on('close', (code) => {
-      if (code === 0) {
-        finish(null, stdout);
-      } else {
-        finish(
-          new ApiError(409, 'git_command_failed', 'Git could not complete the workspace operation.'),
-        );
-      }
+      finish(null, { code: code ?? 1, stdout, stderr });
     });
   });
+}
+
+async function runGit(cwd: string, args: string[]): Promise<string> {
+  const result = await runGitCommand(cwd, args);
+  if (result.code !== 0) {
+    const detail = result.stderr
+      .trim()
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .slice(-2)
+      .join(' | ');
+    throw new ApiError(
+      409,
+      'git_command_failed',
+      detail
+        ? `Git could not complete the workspace operation: ${detail}`
+        : 'Git could not complete the workspace operation.',
+    );
+  }
+  return result.stdout.trim();
 }
 
 function isWithinDirectory(parent: string, target: string): boolean {
@@ -167,10 +206,13 @@ export function getGitWorkspacePaths(
   sessionId: string,
   terminalId: string,
 ): GitWorkspacePaths {
+  // Keep the key short: Git for Windows rejects worktree paths near PATH_MAX
+  // with a cryptic "$GIT_DIR too big" error.
   const repositoryKey = crypto
     .createHash('sha256')
     .update(path.resolve(snapshot.repositoryRoot).toLowerCase())
-    .digest('hex');
+    .digest('hex')
+    .slice(0, 16);
   const worktreePath = path.join(
     runtimeDir,
     WORKTREES_DIRECTORY_NAME,
@@ -186,12 +228,24 @@ export function getGitWorkspacePaths(
       'The project path is outside its Git repository.',
     );
   }
+  if (process.platform === 'win32' && workingDirectory.length > 200) {
+    throw new ApiError(
+      409,
+      'workspace_path_too_long',
+      'The isolated worktree path is too long for Git on Windows. Set DEVPILOT_RUNTIME_DIR to a shorter folder or move the project closer to the drive root.',
+    );
+  }
   return { worktreePath, workingDirectory };
+}
+
+export function getGitBranchName(sessionId: string, terminalId: string): string {
+  return `${AGENT_BRANCH_PREFIX}/${sessionId}/${terminalId}`;
 }
 
 export async function createGitWorktree(
   snapshot: GitRepositorySnapshot,
   worktreePath: string,
+  branchName: string,
 ): Promise<void> {
   if (fs.existsSync(worktreePath)) {
     throw new ApiError(409, 'git_workspace_path_exists', 'The isolated workspace path already exists.');
@@ -200,13 +254,29 @@ export async function createGitWorktree(
   await runGit(snapshot.repositoryRoot, [
     'worktree',
     'add',
-    '--detach',
+    '-b',
+    branchName,
     worktreePath,
     snapshot.baseCommit,
   ]);
   if (!fs.statSync(worktreePath).isDirectory()) {
     throw new ApiError(409, 'git_workspace_invalid', 'Git did not create an isolated workspace directory.');
   }
+}
+
+export async function removeGitWorktree(
+  repositoryRoot: string,
+  worktreePath: string,
+): Promise<void> {
+  if (!fs.existsSync(worktreePath)) return;
+  const listed = await runGit(repositoryRoot, ['worktree', 'list', '--porcelain']);
+  const target = path.resolve(worktreePath).toLowerCase();
+  const isRegisteredWorktree = listed
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('worktree '))
+    .some((line) => path.resolve(line.slice('worktree '.length)).toLowerCase() === target);
+  if (!isRegisteredWorktree) return;
+  await runGit(repositoryRoot, ['worktree', 'remove', '--force', worktreePath]);
 }
 
 export async function validateGitWorkspace(
