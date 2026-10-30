@@ -7,7 +7,6 @@ import {
   RotateCw,
   Square,
   Terminal,
-  X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
@@ -17,6 +16,7 @@ import {
   TerminalStatusBadge,
 } from '../components/Badge';
 import { EmptyState } from '../components/EmptyState';
+import { Notice } from '../components/Notice';
 import { apiGet, apiPost } from '../lib/api';
 import type { SessionSummary, SessionTerminal } from '../lib/types';
 
@@ -100,7 +100,7 @@ export function SessionsPage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="btn px-2.5 py-1.5"
+            className="btn btn-icon"
             onClick={() => void load()}
             aria-label="Refresh sessions"
             disabled={loading}
@@ -115,30 +115,18 @@ export function SessionsPage() {
       </section>
 
       {actionError ? (
-        <div
-          role="alert"
-          className="flex items-start justify-between gap-3 rounded-panel border border-line bg-danger-soft px-4 py-3 text-sm text-ink"
-        >
-          <span>{actionError}</span>
-          <button
-            type="button"
-            className="rounded p-1 text-muted hover:bg-hover hover:text-ink"
-            onClick={() => setActionError(null)}
-            aria-label="Dismiss session error"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <Notice tone="danger" onDismiss={() => setActionError(null)}>
+          {actionError}
+        </Notice>
       ) : null}
 
       {loadError ? (
-        <div className="flex flex-col gap-3 rounded-panel border border-line bg-danger-soft px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-          <span>Could not load sessions: {loadError}</span>
-          <button type="button" className="btn px-3 py-1.5" onClick={() => void load()}>
-            <RefreshCw className="h-3.5 w-3.5" />
-            Retry
-          </button>
-        </div>
+        <Notice
+          tone="danger"
+          action={{ label: 'Retry', onClick: () => void load(), icon: RefreshCw }}
+        >
+          Could not load sessions: {loadError}
+        </Notice>
       ) : null}
 
       {sessions === null && loading ? (
@@ -199,7 +187,7 @@ export function SessionsPage() {
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
                     <Link
                       to={`/terminals?session=${session.id}`}
-                      className="btn px-2.5 py-1.5"
+                              className="btn btn-sm"
                       data-testid={`open-workspace-${session.id}`}
                     >
                       <Terminal className="h-3.5 w-3.5" />
@@ -208,7 +196,7 @@ export function SessionsPage() {
                     {hasLiveTerminal ? (
                       <button
                         type="button"
-                        className="btn px-2.5 py-1.5 text-danger hover:border-danger"
+                        className="btn btn-sm text-danger hover:border-danger"
                         onClick={() => void stopSession(session)}
                         disabled={actionId !== null}
                         data-testid={`stop-session-${session.id}`}
@@ -286,7 +274,7 @@ export function SessionsPage() {
                             {canStop ? (
                               <button
                                 type="button"
-                                className="btn px-2.5 py-1.5"
+                      className="btn btn-sm"
                                 onClick={() =>
                                   void runAction(
                                     `terminal-stop:${terminal.id}`,
@@ -306,7 +294,7 @@ export function SessionsPage() {
                             ) : null}
                             <button
                               type="button"
-                              className="btn px-2.5 py-1.5"
+                                className="btn btn-sm"
                               onClick={() =>
                                 void runAction(
                                   `terminal-restart:${terminal.id}`,

@@ -1,4 +1,5 @@
 import { useRef, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import type { TerminalLayoutNode } from '../lib/terminalLayout';
 
 interface TerminalSplitViewProps {
@@ -16,6 +17,13 @@ interface MinimumSize {
 const MIN_TERMINAL_WIDTH = 320;
 const MIN_TERMINAL_HEIGHT = 220;
 const SPLIT_DIVIDER_SIZE = 8;
+const NARROW_VIEWPORT_QUERY = '(max-width: 767px)';
+
+/** Below the mobile breakpoint every split collapses into one vertical column. */
+function stackedMinimumHeight(node: TerminalLayoutNode): number {
+  if (node.type === 'terminal') return MIN_TERMINAL_HEIGHT;
+  return stackedMinimumHeight(node.first) + SPLIT_DIVIDER_SIZE + stackedMinimumHeight(node.second);
+}
 
 function minimumSize(node: TerminalLayoutNode): MinimumSize {
   if (node.type === 'terminal') {
@@ -42,6 +50,7 @@ export function TerminalSplitView({
   renderTerminal,
 }: TerminalSplitViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const stacked = useMediaQuery(NARROW_VIEWPORT_QUERY);
 
   if (node.type === 'terminal') {
     return (
@@ -54,7 +63,7 @@ export function TerminalSplitView({
     );
   }
 
-  const horizontal = node.direction === 'horizontal';
+  const horizontal = !stacked && node.direction === 'horizontal';
   const firstSize = minimumSize(node.first);
   const secondSize = minimumSize(node.second);
   const size = minimumSize(node);
@@ -88,15 +97,18 @@ export function TerminalSplitView({
           ? 'flex-row'
           : 'flex-col'
       }`}
-      style={{ minWidth: size.width, minHeight: size.height }}
+      style={{
+        minWidth: stacked ? 0 : size.width,
+        minHeight: stacked ? stackedMinimumHeight(node) : size.height,
+      }}
       data-testid={`split-${path.map((branch) => (branch ? '1' : '0')).join('') || 'root'}`}
     >
       <div
         className="min-h-0 min-w-0 shrink-0"
         style={{
           flexBasis: `calc(${node.ratio * 100}% - ${node.ratio * SPLIT_DIVIDER_SIZE}px)`,
-          minWidth: firstSize.width,
-          minHeight: firstSize.height,
+          minWidth: stacked ? 0 : firstSize.width,
+          minHeight: stacked ? stackedMinimumHeight(node.first) : firstSize.height,
         }}
       >
         <TerminalSplitView
@@ -134,7 +146,10 @@ export function TerminalSplitView({
       </div>
       <div
         className="min-h-0 min-w-0 flex-1"
-        style={{ minWidth: secondSize.width, minHeight: secondSize.height }}
+        style={{
+          minWidth: stacked ? 0 : secondSize.width,
+          minHeight: stacked ? stackedMinimumHeight(node.second) : secondSize.height,
+        }}
       >
         <TerminalSplitView
           node={node.second}

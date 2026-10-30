@@ -349,6 +349,7 @@ try {
   );
   console.log('PASS /exit closed Claude and cleaned up its process tree');
 
+  await page.getByTestId(`terminal-menu-${terminalId}`).click();
   await page.getByTestId(`restart-terminal-${terminalId}`).click();
   await waitUntil(async () => {
     const result = await api('/api/sessions');

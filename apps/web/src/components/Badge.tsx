@@ -174,3 +174,26 @@ export function TerminalStatusBadge({ status }: { status: TerminalDisplayStatus 
     </span>
   );
 }
+
+export function ConnectionBadge({
+  connected,
+  label,
+  testId,
+}: {
+  connected: boolean;
+  label: string;
+  testId?: string;
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-[11px] text-muted"
+      data-testid={testId}
+    >
+      <span
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${connected ? 'bg-ok' : 'bg-muted'}`}
+        aria-hidden="true"
+      />
+      {label}
+    </span>
+  );
+}

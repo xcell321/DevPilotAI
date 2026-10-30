@@ -9,22 +9,14 @@ interface SidebarProps {
 }
 
 export function Sidebar({ backend, onNewSession }: SidebarProps) {
-  const online = Boolean(backend.health);
-  const statusLabel = online
-    ? 'Backend online'
-    : backend.healthError
-      ? 'Backend offline'
-      : 'Checking backend';
-
   return (
     <aside className="flex w-16 shrink-0 flex-col border-r border-line bg-panel lg:w-60">
       <div className="flex h-14 items-center gap-3 border-b border-line px-3 lg:px-4">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-bold text-white">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-bold text-app">
           DP
         </div>
         <div className="hidden min-w-0 lg:block">
-          <p className="truncate text-sm font-semibold text-ink">DevPilot AI</p>
-          <p className="truncate text-[11px] text-muted">Local coding workspace</p>
+          <p className="truncate font-serif text-base leading-tight text-ink">DevPilot AI</p>
         </div>
       </div>
 
@@ -66,17 +58,9 @@ export function Sidebar({ backend, onNewSession }: SidebarProps) {
       </nav>
 
       <div className="border-t border-line p-3">
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <span
-            className={`h-2 w-2 shrink-0 rounded-full ${
-              online ? 'bg-ok' : backend.healthError ? 'bg-danger' : 'bg-warn'
-            }`}
-          />
-          <span className="hidden lg:inline">{statusLabel}</span>
-        </div>
-        <p className="mt-1 hidden text-[11px] text-muted lg:block">
-          {backend.health ? `v${backend.health.app.version}` : 'Local-first'}
-        </p>
+        {backend.health ? (
+          <p className="hidden text-[11px] text-muted lg:block">v{backend.health.app.version}</p>
+        ) : null}
       </div>
     </aside>
   );

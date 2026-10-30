@@ -611,6 +611,7 @@ try {
     await page.getByTestId(`terminal-dimensions-${terminalA.id}`).textContent(),
   );
   assert(dimensionsBefore, 'Terminal dimensions were not reported');
+  await page.getByTestId(`terminal-menu-${terminalA.id}`).click();
   await page.getByTestId(`maximize-terminal-${terminalA.id}`).click();
   await waitUntil(async () => {
     const current = parseDimensions(
@@ -626,9 +627,11 @@ try {
     );
     return Boolean(current && ptySize === `${current.cols}x${current.rows}`);
   }, 'The server did not acknowledge the resized PTY dimensions');
+  await page.getByTestId(`terminal-menu-${terminalA.id}`).click();
   await page.getByTestId(`maximize-terminal-${terminalA.id}`).click();
   console.log('PASS maximize sent the xterm resize over WebSocket and the PTY acknowledged it');
 
+  await page.getByTestId(`terminal-menu-${terminalA.id}`).click();
   await page.getByTestId(`maximize-terminal-${terminalA.id}`).click();
   await page.getByTestId('terminal-layout-select').selectOption('single');
   await waitUntil(async () => {
@@ -660,6 +663,7 @@ try {
   session = (await apiGet('/api/sessions')).sessions.find((item) => item.id === session.id);
   terminalA = session.terminals.find((entry) => entry.id === terminalA.id);
   assert(terminalA.pid === preferencePid, 'Reloading workspace preferences replaced the process');
+  await page.getByTestId(`terminal-menu-${terminalA.id}`).click();
   await page.getByTestId(`maximize-terminal-${terminalA.id}`).click();
   await page.getByTestId('terminal-layout-select').selectOption('auto');
   await waitUntil(async () => {
@@ -741,6 +745,7 @@ try {
   );
   console.log('PASS terminal exit updated the real process state in the workspace');
 
+  await page.getByTestId(`terminal-menu-${terminalB.id}`).click();
   await page.getByTestId(`restart-terminal-${terminalB.id}`).click();
   await waitForSession(
     session.id,
@@ -757,6 +762,7 @@ try {
   await waitForTerminalText(terminalB.id, 'E2E_ECHO:after-restart');
   console.log('PASS restart reconnected the panel to a new live terminal handle');
 
+  await page.getByTestId(`terminal-menu-${terminalA.id}`).click();
   await page.getByTestId(`stop-terminal-${terminalA.id}`).click();
   await waitForSession(
     session.id,
@@ -773,6 +779,7 @@ try {
     'Terminal panel did not show the stopped state',
   );
 
+  await page.getByTestId(`terminal-menu-${terminalA.id}`).click();
   await page.getByTestId(`restart-terminal-${terminalA.id}`).click();
   await waitForSession(
     session.id,

@@ -12,6 +12,11 @@ export default {
           hover: 'var(--color-primary-hover)',
           soft: 'var(--color-primary-soft)',
         },
+        brass: {
+          DEFAULT: 'var(--color-brass)',
+          hover: 'var(--color-brass-hover)',
+          soft: 'var(--color-brass-soft)',
+        },
         ok: {
           DEFAULT: 'var(--color-ok)',
           soft: 'var(--color-ok-soft)',
@@ -32,6 +37,11 @@ export default {
       },
       borderRadius: {
         panel: 'var(--radius-panel)',
+      },
+      fontFamily: {
+        display: 'var(--font-display)',
+        serif: 'var(--font-serif)',
+        mono: 'var(--font-mono)',
       },
     },
   },

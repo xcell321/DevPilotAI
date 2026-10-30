@@ -1,28 +1,19 @@
-import {
-  AlertCircle,
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  LayoutGrid,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Square,
-  Terminal as TerminalIcon,
-  X,
-} from 'lucide-react';
+import { Loader2, Plus, Terminal as TerminalIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
 import type { AppOutletContext } from '../components/AppLayout';
 import { AgentTaskDialog } from '../components/AgentTaskDialog';
-import { SessionStatusBadge } from '../components/Badge';
 import { EmptyState } from '../components/EmptyState';
 import { TaskOrchestrationPanel } from '../components/TaskOrchestrationPanel';
+import { TerminalGridHeader } from '../components/TerminalGridHeader';
 import { TerminalPanel } from '../components/TerminalPanel';
+import { TerminalSessionToolbar } from '../components/TerminalSessionToolbar';
 import { TerminalSplitView } from '../components/TerminalSplitView';
+import { TerminalStatusLine } from '../components/TerminalStatusLine';
 import { WorkflowComposer } from '../components/WorkflowComposer';
 import { apiGet, apiPost } from '../lib/api';
+import { CONVERSION_DETAILS_ANCHOR_ID, LIVE_POLL_INTERVAL_MS } from '../lib/constants';
+import { useTerminalLayoutSync } from '../hooks/useTerminalLayoutSync';
 import type { SessionSummary, TerminalLayout, ToolProfile, WorkspacePreferences } from '../lib/types';
 import {
   DEFAULT_WORKSPACE_PREFERENCES,
@@ -31,8 +22,6 @@ import {
   type WorkspacePreferencesPatch,
 } from '../lib/workspacePreferences';
 import {
-  hasSavedTerminalLayout,
-  loadTerminalLayout,
   createTerminalLayoutForPreset,
   removeTerminal,
   resizeTerminalSplit,
@@ -102,7 +91,7 @@ export function TerminalsPage() {
     void load();
     const timer = window.setInterval(() => {
       void load();
-    }, 1500);
+    }, LIVE_POLL_INTERVAL_MS);
     return () => {
       window.clearInterval(timer);
       requestRef.current += 1;
@@ -158,42 +147,19 @@ export function TerminalsPage() {
     setSearchParams({ session: preferred.id }, { replace: true });
   }, [sessions, selectedId, setSearchParams, preferences, preferencesLoaded]);
 
-  useEffect(() => {
-    if (!preferencesLoaded || !selected) return;
-    const currentIds = terminals.map((terminal) => terminal.id);
-    if (addInFlightRef.current && layoutSessionId === selected.id) return;
-    const knownIds = layout
-      ? [...terminalIdsInLayout(layout.tree), ...layout.closedTerminalIds]
-      : [];
-    if (
-      layoutSessionId === selected.id &&
-      knownIds.length === currentIds.length &&
-      currentIds.every((id) => knownIds.includes(id))
-    ) {
-      return;
-    }
-
-    const saved = hasSavedTerminalLayout(selected.id);
-    const restored = saved
-      ? loadTerminalLayout(selected.id, currentIds)
-      : createTerminalLayoutForPreset(
-          currentIds,
-          preferences.terminalLayout,
-          preferences.maximizedTerminalId,
-        );
-    layoutRef.current = restored;
-    setLayout(restored);
-    setLayoutSessionId(selected.id);
-    saveTerminalLayout(selected.id, restored);
-  }, [
+  useTerminalLayoutSync({
+    selected,
+    currentIds: terminals.map((terminal) => terminal.id),
+    terminalIdsKey,
     layout,
     layoutSessionId,
-    preferences.maximizedTerminalId,
-    preferences.terminalLayout,
+    layoutRef,
+    addInFlightRef,
+    preferences,
     preferencesLoaded,
-    selected,
-    terminalIdsKey,
-  ]);
+    setLayout,
+    setLayoutSessionId,
+  });
 
   const applySession = (updated: SessionSummary) => {
     setSessions((current) =>
@@ -525,6 +491,12 @@ export function TerminalsPage() {
     commitLayout(selected.id, { ...layout, activeTerminalId: terminalId });
   };
 
+  const openConversionDetails = () => {
+    document
+      .getElementById(CONVERSION_DETAILS_ANCHOR_ID)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   const maximizedId = layoutSessionId === selected?.id ? layout?.maximizedTerminalId ?? null : null;
   const layoutTree = layoutSessionId === selected?.id ? layout?.tree ?? null : null;
   const visibleTerminalIds = terminalIdsInLayout(layoutTree);
@@ -541,6 +513,10 @@ export function TerminalsPage() {
   const taskEditorTerminal = taskEditorTerminalId
     ? terminals.find((terminal) => terminal.id === taskEditorTerminalId) ?? null
     : null;
+  const layoutReady = Boolean(selected && layout && layoutSessionId === selected.id);
+  const readyWorktrees = terminals.filter(
+    (terminal) => terminal.workspace?.status === 'ready',
+  ).length;
 
   useEffect(() => {
     setToolChoice('');
@@ -551,175 +527,70 @@ export function TerminalsPage() {
   }, [selected?.id]);
 
   return (
-    <div className="flex h-full min-h-[420px] flex-col gap-2">
+    <div className="flex h-full min-h-[420px] flex-col gap-3">
+      <h2 className="font-serif text-2xl leading-tight text-ink">Terminals</h2>
+
       <WorkflowComposer
         onWorkflowStarted={openWorkflowSession}
         session={selected}
         compact={selected !== null}
       />
-      <section className="panel flex shrink-0 flex-col gap-2 p-2 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-2 text-sm text-muted">
-            <LayoutGrid className="h-4 w-4 shrink-0" />
-            <label htmlFor="terminal-session" className="shrink-0">
-              Session history
-            </label>
-          </div>
-          {sessions && sessions.length > 0 ? (
-            <select
-              id="terminal-session"
-              className="input min-w-0 py-1.5 sm:max-w-xs"
-              value={selected?.id ?? ''}
-              disabled={action !== null || sessionStopping}
-              onChange={(event) => selectSession(event.target.value)}
-              data-testid="terminal-session-select"
-            >
-              {sessions.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {session.title} - {session.status}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <span className="text-sm text-muted">No saved sessions</span>
-          )}
-          {selected ? (
-            <div className="flex min-w-0 items-center gap-2">
-              <SessionStatusBadge status={selected.status} />
-              <span className="truncate text-xs text-muted">{selected.project.name}</span>
-            </div>
-          ) : null}
-        </div>
 
-        <div className="flex min-w-0 flex-nowrap items-center justify-end gap-1.5 overflow-x-auto">
-          {selected ? (
-            <div className="flex min-w-max flex-nowrap items-center gap-1">
-              <select
-                className="input w-auto min-w-32 py-1.5"
-                aria-label="Terminal layout"
-                value={preferences.terminalLayout}
-                onChange={(event) =>
-                  applyLayoutPreset(event.target.value as TerminalLayout)
-                }
-                data-testid="terminal-layout-select"
-              >
-                <option value="auto">Auto (balanced)</option>
-                <option value="single">Focus active terminal</option>
-                <option value="horizontal">Horizontal split</option>
-                <option value="vertical">Vertical split</option>
-                <option value="grid">Balanced grid</option>
-              </select>
-              {!selected.workspaceMode ? (
-                <select
-                  className="input w-auto py-1.5"
-                  aria-label="Choose workspace mode for this saved session"
-                  value={workspaceModeChoice}
-                  onChange={(event) => setWorkspaceModeChoice(event.target.value as 'shared' | 'isolated' | '')}
-                  data-testid="existing-workspace-mode"
-                >
-                  <option value="">Choose workspace mode...</option>
-                  <option value="shared">Shared Folder</option>
-                  <option value="isolated">Isolated Worktrees</option>
-                </select>
-              ) : null}
-              <select
-                className="input w-auto min-w-36 py-1.5"
-                aria-label="Select CLI profile or saved terminal to add"
-                value={toolChoice}
-                ref={addChoiceRef}
-                disabled={action !== null}
-                onChange={(event) => {
-                  setToolChoice(event.target.value);
-                  setAddTaskDescription('');
-                  setAddTaskScope('');
-                  setAddTaskDependencies([]);
-                }}
-                data-testid="add-terminal-choice"
-              >
-                <option value="">+ Add Terminal...</option>
-                {hiddenTerminals.length > 0 ? (
-                  <optgroup label="Reopen saved terminal">
-                    {hiddenTerminals.map((terminal) => (
-                      <option key={terminal.id} value={`terminal:${terminal.id}`}>
-                        {terminal.toolName} - {terminal.status}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null}
-                <optgroup label="Launchable CLI profiles">
-                  {launchableTools.map((tool) => (
-                    <option
-                      key={tool.id}
-                      value={`tool:${tool.id}`}
-                      disabled={!canAddNewTerminal}
-                    >
-                      {tool.displayName}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-              {([
-                ['left', ArrowLeft],
-                ['right', ArrowRight],
-                ['up', ArrowUp],
-                ['down', ArrowDown],
-              ] as const).map(([placement, Icon]) => (
-                <button
-                  key={placement}
-                  type="button"
-                  className="btn shrink-0 px-2 py-1.5"
-                  onClick={() => void addTerminal(placement)}
-                  disabled={
-                    !toolChoice ||
-                    action !== null ||
-                    layoutSessionId !== selected.id ||
-                    (toolChoice.startsWith('tool:') && !canAddNewTerminal)
-                  }
-                  title={`Add the selected terminal ${placement} of the active panel`}
-                  data-testid={`split-terminal-${placement}`}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <Icon className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Add {placement}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <button
-            type="button"
-            className="btn shrink-0 px-2 py-1.5"
-            onClick={() => void load()}
-            aria-label="Refresh terminal workspace"
-            disabled={loading}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-          {selected && selectedLive ? (
-            <button
-              type="button"
-              className="btn shrink-0 px-2 py-1.5 text-danger hover:border-danger"
-              onClick={() => void stopSession(selected)}
-              disabled={sessionStopping || action !== null}
-              data-testid="stop-session-workspace"
-            >
-              {sessionStopping ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Square className="h-3.5 w-3.5" />
-              )}
-              Stop session
-            </button>
-          ) : null}
-          <button type="button" className="btn btn-primary shrink-0 px-2.5 py-1.5" onClick={openNewSession}>
-            <Plus className="h-4 w-4" />
-            New session
-          </button>
-        </div>
-      </section>
+      <TerminalSessionToolbar
+        sessions={sessions}
+        selected={selected}
+        selectedLive={selectedLive}
+        controlsDisabled={action !== null}
+        addDisabled={action !== null || !layoutReady}
+        onSelectSession={selectSession}
+        hiddenTerminals={hiddenTerminals}
+        launchableTools={launchableTools}
+        canAddNewTerminal={canAddNewTerminal}
+        toolChoice={toolChoice}
+        onToolChoiceChange={(choice) => {
+          setToolChoice(choice);
+          setAddTaskDescription('');
+          setAddTaskScope('');
+          setAddTaskDependencies([]);
+        }}
+        onRefresh={() => void load()}
+        refreshing={loading}
+        onStopSession={() => {
+          if (selected) void stopSession(selected);
+        }}
+        stopping={sessionStopping}
+        onNewSession={openNewSession}
+      />
+
+      <TerminalStatusLine
+        loadError={loadError}
+        actionError={actionError}
+        onRetry={() => void load()}
+        onDismissActionError={() => setActionError(null)}
+        showWorkspace={selected !== null}
+        workspaceMode={selected?.workspaceMode ?? null}
+        projectName={selected?.project.name ?? ''}
+        projectPath={selected?.project.path ?? ''}
+        readyWorktrees={readyWorktrees}
+        modeChoice={workspaceModeChoice}
+        onModeChoiceChange={setWorkspaceModeChoice}
+        onOpenConversion={openConversionDetails}
+      />
+
+      {selected ? (
+        <TerminalGridHeader
+          visibleCount={visibleTerminalIds.length}
+          terminalLimit={terminalLimit}
+          limitReached={terminalLimit !== null && terminals.length >= terminalLimit}
+          layoutPreset={preferences.terminalLayout}
+          onLayoutPresetChange={applyLayoutPreset}
+          maximized={maximized}
+        />
+      ) : null}
 
       {selected && toolChoice.startsWith('tool:') ? (
-        <details className="panel shrink-0 p-3" data-testid="add-terminal-task-form">
-          <summary className="cursor-pointer text-xs font-medium text-muted">
+        <details className="shrink-0 border-t border-line pt-2" data-testid="add-terminal-task-form">
+          <summary className="disclosure-summary">
             Configure the new agent task and file scope (optional)
           </summary>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -765,37 +636,8 @@ export function TerminalsPage() {
         </details>
       ) : null}
 
-      {actionError ? (
-        <div
-          role="alert"
-          className="flex shrink-0 items-start justify-between gap-3 rounded-panel border border-line bg-danger-soft px-3 py-2 text-xs text-ink"
-        >
-          <span>{actionError}</span>
-          <button
-            type="button"
-            className="rounded p-0.5 text-muted hover:bg-hover hover:text-ink"
-            onClick={() => setActionError(null)}
-            aria-label="Dismiss terminal error"
-          >
-            <X className="h-3 w-3" />
-          </button>
-        </div>
-      ) : null}
-
-      {loadError ? (
-        <div className="flex shrink-0 flex-col gap-2 rounded-panel border border-line bg-danger-soft px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
-          <span className="flex items-center gap-1.5">
-            <AlertCircle className="h-3.5 w-3.5" />
-            Live status could not be refreshed: {loadError}
-          </span>
-          <button type="button" className="btn px-2.5 py-1" onClick={() => void load()}>
-            Retry
-          </button>
-        </div>
-      ) : null}
-
       {sessions === null && loading ? (
-        <div className="panel flex flex-1 items-center justify-center gap-2 text-sm text-muted">
+        <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading terminal workspace...
         </div>
@@ -807,7 +649,7 @@ export function TerminalsPage() {
           title="No saved sessions"
           description="Create a session with a verified CLI profile, then return here to work in its real terminal processes."
           action={
-            <button type="button" className="btn btn-primary" onClick={openNewSession}>
+            <button type="button" className="btn btn-brass" onClick={openNewSession}>
               <Plus className="h-4 w-4" />
               Create a session
             </button>
@@ -817,66 +659,6 @@ export function TerminalsPage() {
 
       {selected ? (
         <section className="flex min-h-0 flex-1 flex-col gap-2">
-          <div
-            className={`flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-panel border px-2 py-1.5 text-[11px] ${
-              selected.workspaceMode === 'isolated'
-                ? 'border-primary bg-primary-soft text-ink'
-                : selected.workspaceMode === 'shared'
-                  ? 'border-line bg-panel text-ink'
-                  : 'border-lineStrong bg-panel-2 text-warn'
-            }`}
-            data-testid="workspace-status"
-          >
-            <span>
-              Workspace: <strong>{selected.workspaceMode === 'isolated' ? 'Isolated Worktrees' : selected.workspaceMode === 'shared' ? 'Shared Folder' : 'Mode not set'}</strong>
-              {' · '}{selected.project.name} — <span className="mono">{selected.project.path}</span>
-            </span>
-            <span>
-              {selected.workspaceMode === 'isolated'
-                ? `${terminals.filter((terminal) => terminal.workspace?.status === 'ready').length} ready worktree(s)`
-                : selected.workspaceMode === 'shared'
-                  ? 'All terminals use this folder; edits are not isolated.'
-                  : 'Choose a mode before adding a CLI; existing terminal paths will not change.'}
-            </span>
-          </div>
-          {selected.workspaceMode === 'shared' ? (
-            <p className="shrink-0 rounded-lg border border-line bg-warn-soft px-3 py-2 text-[11px] text-warn">
-              Shared Folder mode: terminals edit the same physical files, so concurrent agent tasks
-              are blocked and file leases are advisory only. Convert the stopped session to isolated
-              worktrees in the task orchestration panel below for enforceable coordination.
-            </p>
-          ) : null}
-          <details
-            className="shrink-0 rounded-panel border border-line bg-panel px-2 py-1"
-            data-testid="task-orchestration-details"
-          >
-            <summary className="cursor-pointer text-[11px] text-muted">
-              Advanced Details · task history, validation, integration, and recovery
-            </summary>
-            <div className="max-h-[40vh] overflow-y-auto pt-2">
-              <TaskOrchestrationPanel
-                session={selected}
-                onSessionChanged={applySession}
-              />
-            </div>
-          </details>
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-1 text-[10px] text-muted">
-            <span className="flex items-center gap-1.5">
-              <TerminalIcon className="h-3.5 w-3.5" />
-              {visibleTerminalIds.length} terminal{visibleTerminalIds.length === 1 ? '' : 's'}
-              {terminalLimit !== null ? ` / ${terminalLimit}` : ''} in{' '}
-              <span className="mono text-ink">{selected.project.path}</span>
-            </span>
-            <span>{maximized ? 'Panel maximized' : 'Drag dividers to resize panels'}</span>
-          </div>
-
-          {terminalLimit !== null && terminals.length >= terminalLimit ? (
-            <p className="shrink-0 px-1 text-[11px] text-warn">
-              Session terminal limit reached. Closing stops a process but does not free its saved
-              terminal slot; reopen saved terminals from the selector.
-            </p>
-          ) : null}
-
           <div className="relative min-h-0 flex-1 overflow-auto" data-testid="terminal-layout">
             {layoutTree ? (
               <TerminalSplitView
@@ -894,6 +676,9 @@ export function TerminalsPage() {
                       terminal={terminal}
                       workingDirectory={
                         terminal.workspace?.workingDirectory ?? selected.project.path
+                      }
+                      version={
+                        tools.find((tool) => tool.id === terminal.toolProfileId)?.version ?? null
                       }
                       visible={!maximizedId || maximizedId === terminal.id}
                       maximized={maximizedId === terminal.id}
@@ -924,7 +709,7 @@ export function TerminalsPage() {
                 }}
               />
             ) : (
-              <div className="panel flex h-full min-h-0 items-center justify-center p-6 text-center">
+              <div className="flex h-full min-h-0 items-center justify-center p-6 text-center">
                 <div>
                   <TerminalIcon className="mx-auto h-8 w-8 text-muted" />
                   <p className="mt-3 text-sm font-medium text-ink">No terminal panel is open</p>
@@ -935,6 +720,19 @@ export function TerminalsPage() {
               </div>
             )}
           </div>
+
+          <details
+            id={CONVERSION_DETAILS_ANCHOR_ID}
+            className="shrink-0 border-t border-line pt-2"
+            data-testid="task-orchestration-details"
+          >
+            <summary className="disclosure-summary">
+              Advanced Details · task history, validation, integration, and recovery
+            </summary>
+            <div className="max-h-[40vh] overflow-y-auto pt-2">
+              <TaskOrchestrationPanel session={selected} onSessionChanged={applySession} />
+            </div>
+          </details>
         </section>
       ) : null}
       {selected && taskEditorTerminal ? (

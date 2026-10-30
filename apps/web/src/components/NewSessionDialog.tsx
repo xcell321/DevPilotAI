@@ -525,7 +525,7 @@ export function NewSessionDialog({
             </fieldset>
 
             <details className="rounded-lg border border-line bg-panel-2 px-3 py-2">
-              <summary className="cursor-pointer text-xs font-medium text-muted">
+              <summary className="disclosure-summary">
                 Advanced: assign tasks manually
               </summary>
               <fieldset className="mt-3">

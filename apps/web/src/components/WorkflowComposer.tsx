@@ -1,7 +1,11 @@
-import { AlertTriangle, Loader2, Play, Sparkles } from 'lucide-react';
+import { Loader2, Play, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiGet, apiPost, apiPut } from '../lib/api';
+import { LIVE_POLL_INTERVAL_MS } from '../lib/constants';
+import { Notice } from './Notice';
+import { WorkflowPlanPreview } from './WorkflowPlanPreview';
+import { WorkflowProgressDashboard } from './WorkflowProgressDashboard';
 import type {
   OrchestrationSettings,
   Project,
@@ -25,54 +29,11 @@ interface WorkflowPreview {
   planFingerprint: string;
 }
 
-interface WorkflowState {
-  summary: SessionOrchestrationSummary;
-  workflow: WorkflowSummary;
-}
+const READY_MESSAGE = 'Ready to start';
 
-function briefText(value: string, maxLength = 140): string {
-  const text = value.replace(/\s+/g, ' ').trim();
-  return text.length > maxLength ? `${text.slice(0, maxLength - 1).trimEnd()}…` : text;
-}
-
-function taskTitle(description: string): string {
-  const firstSentence = description.split(/(?<=\.)\s+/)[0] ?? description;
-  return briefText(firstSentence, 78);
-}
-
-function taskStateLabel(state: SessionOrchestrationSummary['tasks'][number]): string {
-  if (state.state === 'running') return 'Working';
-  if (state.state === 'validating') return 'Checking changes';
-  if (state.state === 'awaiting_integration') return 'Ready for review';
-  if (state.state === 'integrated') return 'Completed';
-  if (state.state === 'failed') return 'Needs your attention';
-  if (state.state === 'cancelled') return 'Cancelled';
-  if (state.state === 'blocked') {
-    if (state.waitKind === 'files') return 'Waiting for a file';
-    if (state.waitKind === 'dependency') return 'Waiting for another task';
-    return 'Blocked';
-  }
-  return state.state === 'unassigned' ? 'Not started' : 'Queued';
-}
-
-function workflowStatus({ summary, workflow }: WorkflowState): string {
-  const states = summary.tasks.map((task) => task.state);
-  if (summary.schedulingPaused || workflow.status === 'paused') return 'paused';
-  if (states.includes('failed')) return 'needs your attention';
-  if (states.length > 0 && states.every((state) => state === 'integrated')) return 'completed';
-  if (states.length > 0 && states.every((state) => state === 'cancelled')) return 'cancelled';
-  if (
-    states.includes('awaiting_integration') &&
-    states.every((state) => ['integrated', 'awaiting_integration'].includes(state))
-  ) {
-    return 'awaiting integration';
-  }
-  if (states.includes('running') || states.includes('validating')) return 'running';
-  if (states.some((state) => ['unassigned', 'blocked', 'ready', 'assigned'].includes(state))) {
-    return 'queued';
-  }
-  return workflow.status;
-}
+const COMPOSER_GUIDE =
+  'Choose a project and describe the outcome. DevPilot plans isolated tasks for available, ' +
+  'launch-verified CLI profiles; review the plan before any agent starts.';
 
 export function WorkflowComposer({
   onWorkflowStarted,
@@ -91,6 +52,7 @@ export function WorkflowComposer({
   const [busy, setBusy] = useState<'preview' | 'start' | 'resume' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -174,7 +136,7 @@ export function WorkflowComposer({
       }
     };
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 3000);
+    const timer = window.setInterval(() => void refresh(), LIVE_POLL_INTERVAL_MS);
     return () => {
       ignore = true;
       window.clearInterval(timer);
@@ -264,15 +226,6 @@ export function WorkflowComposer({
     orchestration?.workflow
       ? { summary: orchestration, workflow: orchestration.workflow }
       : null;
-  const tasks = activeWorkflow?.summary.tasks ?? [];
-  const runningCount = tasks.filter((task) => task.state === 'running').length;
-  const validatingCount = tasks.filter((task) => task.state === 'validating').length;
-  const queuedCount = tasks.filter((task) => ['ready', 'assigned'].includes(task.state)).length;
-  const waitingCount = tasks.filter((task) => task.state === 'blocked').length;
-  const integrationCount = tasks.filter((task) => task.state === 'awaiting_integration').length;
-  const failedCount = tasks.filter((task) => task.state === 'failed').length;
-  const completedCount = tasks.filter((task) => task.state === 'integrated').length;
-  const cancelledCount = tasks.filter((task) => task.state === 'cancelled').length;
   const launchableTools = tools?.filter((tool) => tool.launchable) ?? [];
   const unavailableTools = tools?.filter((tool) => tool.enabled && !tool.launchable) ?? [];
   const workflowPaused = Boolean(
@@ -286,10 +239,6 @@ export function WorkflowComposer({
       tools?.some((tool) => tool.id === task.toolId && tool.launchable),
     ),
   );
-  const needsAttention = failedCount > 0 || tasks.some((task) => {
-    const terminal = session?.terminals.find((entry) => entry.id === task.id);
-    return terminal?.status === 'error' || terminal?.status === 'unavailable';
-  });
   const readinessMessage =
     projects === null || tools === null
       ? 'Checking your project and CLI profiles…'
@@ -305,44 +254,75 @@ export function WorkflowComposer({
                 ? 'No enabled, launch-verified CLI is ready.'
                 : workflowPaused
                   ? 'Workflow scheduling is paused.'
-                  : 'Ready to start';
+                  : READY_MESSAGE;
+  const readinessText =
+    busy === 'preview'
+      ? 'Checking your project…'
+      : busy === 'start'
+        ? 'Preparing safe workspaces…'
+        : preview
+          ? workflowPaused
+            ? 'Plan reviewed; resume scheduling before starting.'
+            : previewToolsReady
+              ? 'Ready to start.'
+              : 'A planned CLI is no longer launch-ready. Regenerate the plan or review CLI setup.'
+          : readinessMessage;
+  const readinessOk = readinessText.startsWith('Ready to start');
 
   return (
     <section
-      className={`panel flex shrink-0 flex-col ${compact ? 'gap-2 p-2' : 'gap-3 p-3'}`}
+      className={`flex shrink-0 flex-col border-b border-line ${
+        compact ? 'gap-2 pb-3' : 'gap-3 pb-4'
+      }`}
       aria-labelledby="workflow-composer-title"
       data-testid="workflow-composer"
     >
-      <div>
-        <h2 id="workflow-composer-title" className="flex items-center gap-2 text-sm font-medium text-ink">
-          <Sparkles className="h-4 w-4 text-primary" />
-          {activeWorkflow ? 'Workflow dashboard' : 'Start an automatic workflow'}
-        </h2>
-        {!compact ? (
-          <p className="mt-1 text-[11px] text-muted">
-            Choose a project and describe the outcome. DevPilot plans isolated tasks for available,
-            launch-verified CLI profiles; review the plan before any agent starts.
-          </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2
+            id="workflow-composer-title"
+            className="eyebrow flex items-center gap-2 text-muted"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-brass" />
+            {activeWorkflow ? 'Workflow dashboard' : 'Start an automatic workflow'}
+          </h2>
+          {!compact || guideOpen ? (
+            <p className="mt-1 text-[11px] text-muted">{COMPOSER_GUIDE}</p>
+          ) : null}
+        </div>
+        {compact ? (
+          <button
+            type="button"
+            className="shrink-0 text-[11px] font-medium text-brass hover:text-brass-hover hover:underline"
+            onClick={() => setGuideOpen((open) => !open)}
+            aria-expanded={guideOpen}
+          >
+            How it works
+          </button>
         ) : null}
       </div>
 
       {unavailableTools.length > 0 && tools !== null ? (
-        <div className="rounded border border-line bg-warn-soft px-2.5 py-2 text-[11px] text-ink">
-          <p className="font-medium text-warn">
-            {unavailableTools.length} enabled CLI profile{unavailableTools.length === 1 ? '' : 's'} need setup.
+        <Notice tone="warn">
+          <p>
+            {unavailableTools.length} enabled CLI profile{unavailableTools.length === 1 ? '' : 's'}{' '}
+            need setup.
           </p>
-          <ul className="mt-1 flex flex-col gap-0.5">
-            {unavailableTools.map((tool) => (
-              <li key={tool.id}>
-                <span className="font-medium">{tool.displayName}</span>
-                {tool.launchReason ? ` — ${tool.launchReason}` : ' — launch verification is required.'}
-              </li>
-            ))}
-          </ul>
-          <Link className="mt-1 inline-block text-primary underline" to="/tools">
+          <p className="mt-0.5 text-muted">
+            {unavailableTools
+              .map(
+                (tool) =>
+                  `${tool.displayName} — ${tool.launchReason ?? 'launch verification is required.'}`,
+              )
+              .join(' · ')}
+          </p>
+          <Link
+            className="mt-0.5 inline-block font-medium text-brass underline underline-offset-2 hover:text-brass-hover"
+            to="/tools"
+          >
             Review CLI setup
           </Link>
-        </div>
+        </Notice>
       ) : null}
 
       <div
@@ -395,7 +375,7 @@ export function WorkflowComposer({
         {compact && !preview ? (
           <button
             type="button"
-            className="btn btn-primary px-3 py-1.5 text-xs"
+            className="btn btn-brass btn-sm"
             onClick={() => void generatePlan()}
             disabled={
               busy !== null ||
@@ -427,81 +407,24 @@ export function WorkflowComposer({
           Register a project before generating an automatic workflow.
         </p>
       ) : !compact && projects?.every((project) => project.pathStatus !== 'ok') ? (
-        <p role="alert" className="text-[11px] text-warn">
-          No registered project folder is currently available.
-        </p>
+        <Notice tone="warn">No registered project folder is currently available.</Notice>
       ) : null}
 
       {preview ? (
-        <div
-          className="rounded-lg border border-line bg-panel-2 p-3 text-[11px]"
-          data-testid="workflow-plan-review"
-        >
-          <h3 className="text-xs font-medium text-ink">Review plan</h3>
-          <p className="mt-1 text-ink">
-            {preview.plan.tasks.length} isolated task{preview.plan.tasks.length === 1 ? '' : 's'}{' '}
-            proposed for {selectedProject?.name ?? 'this project'}.
-          </p>
-          {preview.plan.conventions.length > 0 ? (
-            <p className="mt-1 text-muted">
-              Project conventions: {preview.plan.conventions.join(' · ')}
-            </p>
-          ) : null}
-          <ol className="mt-2 flex flex-col gap-1.5">
-            {preview.plan.tasks.map((task, index) => (
-              <li key={`${task.toolId}-${index}`} className="rounded border border-line bg-panel p-2">
-                <p className="font-medium text-ink">{task.agentName}</p>
-                <p className="mt-0.5">{briefText(task.description)}</p>
-                <details className="mt-1">
-                  <summary className="cursor-pointer text-muted">Task details</summary>
-                  <p className="mt-1 text-muted">
-                    Scope: <span className="mono">{task.declaredFileScope.join(', ')}</span>
-                    {' · '}
-                    {task.dependencies.length === 0
-                      ? 'Can start independently'
-                      : `Waits for ${task.dependencies.length} earlier task(s)`}
-                  </p>
-                  <p className="mt-1 text-muted">{task.rationale}</p>
-                </details>
-              </li>
-            ))}
-          </ol>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="btn px-3 py-1.5 text-xs"
-              onClick={() => void generatePlan()}
-              disabled={busy !== null}
-              data-testid="regenerate-workflow"
-            >
-              Regenerate plan
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary px-3 py-1.5 text-xs"
-              onClick={() => void startWorkflow()}
-              disabled={
-                busy !== null ||
-                workflowPaused ||
-                !previewToolsReady ||
-                settings === null ||
-                Boolean(settingsError)
-              }
-              data-testid="start-workflow"
-            >
-              {busy === 'start' ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Play className="h-3.5 w-3.5" />
-              )}
-              Start workflow
-            </button>
-          </div>
-        </div>
+        <WorkflowPlanPreview
+          plan={preview.plan}
+          projectName={selectedProject?.name ?? null}
+          busy={busy}
+          startDisabled={
+            workflowPaused || !previewToolsReady || settings === null || Boolean(settingsError)
+          }
+          onRegenerate={() => void generatePlan()}
+          onStart={() => void startWorkflow()}
+        />
       ) : !compact ? (
         <button
           type="button"
-          className="btn btn-primary w-fit px-3 py-1.5 text-xs"
+          className="btn btn-primary btn-sm w-fit"
           onClick={() => void generatePlan()}
           disabled={
             busy !== null ||
@@ -524,169 +447,47 @@ export function WorkflowComposer({
       ) : null}
 
       {activeWorkflow ? (
-        <div className="rounded-lg border border-line bg-panel-2 px-3 py-2 text-[11px]" data-testid="workflow-progress">
-          <p className="font-medium text-ink">
-            {needsAttention
-              ? 'Needs your attention'
-              : workflowPaused
-                ? 'Workflow paused'
-                : orchestration?.sharedFolderRisk
-                  ? 'Safe workspaces required'
-                  : `Workflow ${workflowStatus(activeWorkflow)}`}
-            {' · '}
-            {activeWorkflow.workflow.plan.tasks.length} agent task(s)
-          </p>
-          <p className="mt-0.5 text-muted">
-            {runningCount} working · {queuedCount} queued · {waitingCount} waiting ·{' '}
-            {validatingCount} checking changes · {integrationCount} ready for review ·{' '}
-            {completedCount} completed · {failedCount} need attention ·{' '}
-            {cancelledCount} cancelled
-          </p>
-          <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
-            {tasks.map((task) => {
-              const terminal = session?.terminals.find((entry) => entry.id === task.id);
-              const failedTerminal =
-                terminal?.status === 'error' || terminal?.status === 'unavailable';
-              return (
-                <li
-                  key={task.id}
-                  className={`rounded border px-2 py-1.5 ${
-                    task.state === 'failed' || failedTerminal
-                      ? 'border-danger bg-danger-soft'
-                      : 'border-line bg-panel'
-                  }`}
-                >
-                  <p className="font-medium text-ink">
-                    {taskTitle(task.description) || task.agentName}
-                  </p>
-                  <p className="mt-0.5 text-muted">
-                    {briefText(
-                      task.completionSummary ??
-                        task.blockedReason ??
-                        terminal?.lastError ??
-                        (failedTerminal || task.state === 'failed'
-                          ? 'This task stopped before completion and needs attention.'
-                          : task.state === 'integrated'
-                            ? 'The changes were integrated successfully.'
-                            : task.state === 'awaiting_integration'
-                              ? 'Validation finished; changes are ready for review.'
-                              : task.state === 'validating'
-                                ? 'Configured checks are running.'
-                                : terminal?.status === 'running'
-                                  ? 'The agent is working on its assigned changes.'
-                                  : task.waitKind === 'files'
-                                    ? 'Waiting for a file another agent is using.'
-                                    : task.waitKind === 'dependency'
-                                      ? 'Waiting for another task to finish.'
-                                      : 'This task has not started yet.'),
-                    )}
-                  </p>
-                  <p className="text-muted">
-                    {terminal?.toolName ?? task.agentName} ·{' '}
-                    {failedTerminal ? 'Needs your attention' : taskStateLabel(task)}
-                  </p>
-                  {task.waitKind ? (
-                    <p className="mt-0.5 text-muted">
-                      {task.waitKind === 'dependency'
-                        ? 'Waiting for another task to finish.'
-                        : 'Waiting for a file another agent is using.'}
-                    </p>
-                  ) : null}
-                  {task.state === 'failed' || failedTerminal ? (
-                    <p className="mt-0.5 text-danger">
-                      {briefText(terminal?.lastError ?? task.blockedReason ?? task.integrationReason ?? 'The agent needs attention.')}
-                    </p>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-          {workflowPaused ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="text-warn">No new tasks will start until scheduling resumes.</span>
-              <button
-                type="button"
-                className="btn px-2.5 py-1 text-xs"
-                onClick={() => void resumeWorkflow()}
-                disabled={busy !== null}
-                data-testid="resume-workflow"
-              >
-                {busy === 'resume' ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Play className="h-3.5 w-3.5" />
-                )}
-                Resume Workflow
-              </button>
-            </div>
-          ) : null}
-          {statusError ? (
-            <p role="status" className="mt-1 text-warn">
-              <AlertTriangle className="mr-1 inline h-3 w-3" />
-              Showing last confirmed status: {statusError}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
-      {orchestration?.sharedFolderRisk ? (
-        <p className="rounded border border-line bg-warn-soft px-2.5 py-2 text-[11px] text-warn">
-          This session shares one folder, so concurrent agent tasks are blocked. Stop its terminals,
-          then open Advanced Details to convert it to isolated worktrees; your files will not be
-          moved or deleted.{' '}
-          <a className="underline" href="#task-orchestration-details">
-            Open conversion steps
-          </a>
-        </p>
+        <WorkflowProgressDashboard
+          summary={activeWorkflow.summary}
+          workflow={activeWorkflow.workflow}
+          session={session}
+          paused={workflowPaused}
+          sharedFolderRisk={activeWorkflow.summary.sharedFolderRisk}
+          busy={busy !== null}
+          statusError={statusError}
+          onResume={() => void resumeWorkflow()}
+        />
       ) : null}
 
       {workflowPaused && !activeWorkflow ? (
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-warn">
-          <span>Scheduling is paused for this project.</span>
-          <button
-            type="button"
-            className="btn px-2.5 py-1 text-xs"
-            onClick={() => void resumeWorkflow()}
-            disabled={busy !== null}
-            data-testid="resume-workflow"
-          >
-            {busy === 'resume' ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Play className="h-3.5 w-3.5" />
-            )}
-            Resume Workflow
-          </button>
-        </div>
+        <Notice
+          tone="warn"
+          action={{
+            label: 'Resume workflow',
+            onClick: () => void resumeWorkflow(),
+            disabled: busy !== null,
+            icon: Play,
+          }}
+        >
+          Scheduling is paused for this project.
+        </Notice>
       ) : null}
 
       {!activeWorkflow ? (
         <p
-          className={`text-[11px] ${
-            launchableTools.length === 0 && tools !== null ? 'text-warn' : 'text-muted'
-          }`}
+          className="flex items-center gap-1.5 text-[11px] text-muted"
           role="status"
           data-testid="workflow-readiness"
         >
-          {busy === 'preview'
-            ? 'Checking your project…'
-            : busy === 'start'
-              ? 'Preparing safe workspaces…'
-              : preview
-                ? workflowPaused
-                  ? 'Plan reviewed; resume scheduling before starting.'
-                  : previewToolsReady
-                    ? 'Ready to start.'
-                    : 'A planned CLI is no longer launch-ready. Regenerate the plan or review CLI setup.'
-                : readinessMessage}
+          <span
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${readinessOk ? 'bg-ok' : 'bg-warn'}`}
+            aria-hidden
+          />
+          {readinessText}
         </p>
       ) : null}
 
-      {error ? (
-        <p role="alert" className="rounded-lg border border-line bg-danger-soft px-3 py-2 text-xs text-ink">
-          {error}
-        </p>
-      ) : null}
+      {error ? <Notice tone="danger">{error}</Notice> : null}
     </section>
   );
 }

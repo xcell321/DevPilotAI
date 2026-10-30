@@ -11,6 +11,7 @@ import {
 import { Link, useOutletContext } from 'react-router-dom';
 import { EmptyState } from '../components/EmptyState';
 import { EnabledBadge, LaunchBadge } from '../components/Badge';
+import { Notice } from '../components/Notice';
 import type { AppOutletContext } from '../components/AppLayout';
 
 export function OverviewPage() {
@@ -52,13 +53,12 @@ export function OverviewPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       {overviewError ? (
-        <div className="flex flex-col gap-3 rounded-panel border border-line bg-danger-soft px-4 py-3 text-sm text-ink sm:flex-row sm:items-center sm:justify-between">
-          <span>Could not load overview data: {overviewError}</span>
-          <button type="button" className="btn px-3 py-1.5" onClick={() => void refresh()}>
-            <RefreshCw className="h-3.5 w-3.5" />
-            Retry
-          </button>
-        </div>
+        <Notice
+          tone="danger"
+          action={{ label: 'Retry', onClick: () => void refresh(), icon: RefreshCw }}
+        >
+          Could not load overview data: {overviewError}
+        </Notice>
       ) : null}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Workspace metrics">
@@ -99,7 +99,7 @@ export function OverviewPage() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link to="/sessions" className="btn px-3 py-1.5">
+              <Link to="/sessions" className="btn btn-sm">
                 View sessions
               </Link>
               <button type="button" className="btn btn-primary" onClick={openNewSession}>

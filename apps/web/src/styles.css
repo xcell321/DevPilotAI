@@ -3,24 +3,36 @@
 @tailwind utilities;
 
 :root {
-  --color-bg: #0b1220;
-  --color-panel: #111827;
-  --color-panel-2: #151f2e;
-  --color-primary: #2563eb;
-  --color-primary-hover: #1d4ed8;
-  --color-primary-soft: rgba(37, 99, 235, 0.14);
+  --color-bg: #0f100e;
+  --color-panel: #14150f;
+  --color-panel-2: #1a1b14;
+  --color-primary: #c6a15b;
+  --color-primary-hover: #a8874a;
+  --color-primary-soft: rgba(198, 161, 91, 0.14);
+  --color-brass: var(--color-primary);
+  --color-brass-hover: var(--color-primary-hover);
+  --color-brass-soft: var(--color-primary-soft);
   --color-ok: #10b981;
   --color-ok-soft: rgba(16, 185, 129, 0.12);
   --color-warn: #f59e0b;
   --color-warn-soft: rgba(245, 158, 11, 0.12);
   --color-danger: #ef4444;
   --color-danger-soft: rgba(239, 68, 68, 0.12);
-  --color-text: #f9fafb;
-  --color-muted: #9ca3af;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-strong: rgba(255, 255, 255, 0.16);
-  --color-hover: rgba(255, 255, 255, 0.04);
+  --color-text: #f2ece1;
+  --color-muted: #a39c8f;
+  --color-border: rgba(242, 236, 225, 0.1);
+  --color-border-strong: rgba(242, 236, 225, 0.18);
+  --color-hover: rgba(242, 236, 225, 0.05);
+  --color-terminal-bg: var(--color-bg);
+  --color-terminal-fg: var(--color-text);
+  --color-terminal-cursor: var(--color-ok);
+  --color-terminal-selection: var(--color-primary-soft);
+  --color-terminal-black: var(--color-bg);
+  --color-terminal-bright-black: var(--color-muted);
   --radius-panel: 12px;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-display: var(--font-serif);
+  --font-mono: "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
   color-scheme: dark;
 }
 
@@ -42,7 +54,13 @@
   }
 
   ::selection {
-    background: rgba(37, 99, 235, 0.45);
+    background: var(--color-primary-soft);
+  }
+
+  @supports (color: color-mix(in srgb, black, white)) {
+    ::selection {
+      background: color-mix(in srgb, var(--color-primary) 45%, transparent);
+    }
   }
 
   * {
@@ -61,7 +79,35 @@
   }
 
   .btn-primary {
-    @apply border-primary bg-primary hover:border-primary hover:bg-primary-hover;
+    @apply border-primary bg-primary text-app hover:border-primary hover:bg-primary-hover;
+  }
+
+  .btn-brass {
+    @apply border-brass bg-brass text-app hover:border-brass hover:bg-brass-hover;
+  }
+
+  .btn-sm {
+    @apply px-2 py-1 text-xs;
+  }
+
+  .btn-icon {
+    @apply h-7 w-7 px-0 py-0;
+  }
+
+  .disclosure-summary {
+    @apply cursor-pointer text-xs text-muted transition-colors hover:text-ink;
+  }
+
+  .eyebrow {
+    @apply text-[10px] font-semibold uppercase tracking-[0.16em];
+  }
+
+  .segment {
+    @apply inline-flex items-center gap-0.5 rounded-lg border border-line bg-app p-0.5;
+  }
+
+  .segment-btn {
+    @apply inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-muted transition-colors hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-45;
   }
 
   .input {
@@ -69,7 +115,7 @@
   }
 
   .mono {
-    font-family: "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
+    font-family: var(--font-mono);
   }
 }
 
@@ -88,9 +134,15 @@
   min-height: 220px;
 }
 
+@media (max-width: 767px) {
+  .terminal-layout-leaf {
+    min-width: 0;
+  }
+}
+
 .terminal-panel-active {
-  border-color: var(--color-ok);
-  box-shadow: 0 0 0 1px var(--color-ok);
+  border-color: var(--color-brass);
+  box-shadow: 0 0 0 1px var(--color-brass);
 }
 
 .terminal-panel-maximized {

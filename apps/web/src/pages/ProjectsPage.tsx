@@ -6,13 +6,13 @@ import {
   RefreshCw,
   Search,
   Trash2,
-  X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import type { AppOutletContext } from '../components/AppLayout';
 import { ProjectPathBadge } from '../components/Badge';
 import { EmptyState } from '../components/EmptyState';
+import { Notice } from '../components/Notice';
 import {
   AddProjectDialog,
   DeleteProjectDialog,
@@ -102,7 +102,7 @@ export function ProjectsPage() {
           </div>
           <button
             type="button"
-            className="btn px-2.5 py-1.5"
+            className="btn btn-icon"
             onClick={() => void load(debouncedSearch)}
             aria-label="Refresh projects"
             disabled={loading}
@@ -114,31 +114,22 @@ export function ProjectsPage() {
       </section>
 
       {notice ? (
-        <div className="flex items-center justify-between gap-3 rounded-panel border border-line bg-ok-soft px-4 py-3 text-sm text-ink">
-          <span>{notice}</span>
-          <button
-            type="button"
-            className="rounded p-1 text-muted hover:bg-hover hover:text-ink"
-            onClick={() => setNotice(null)}
-            aria-label="Dismiss message"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <Notice tone="success" onDismiss={() => setNotice(null)}>
+          {notice}
+        </Notice>
       ) : null}
 
       {error ? (
-        <div className="flex flex-col gap-3 rounded-panel border border-line bg-danger-soft px-4 py-3 text-sm text-ink sm:flex-row sm:items-center sm:justify-between">
-          <span>Could not load projects: {error}</span>
-          <button
-            type="button"
-            className="btn px-3 py-1.5"
-            onClick={() => void load(debouncedSearch)}
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Retry
-          </button>
-        </div>
+        <Notice
+          tone="danger"
+          action={{
+            label: 'Retry',
+            onClick: () => void load(debouncedSearch),
+            icon: RefreshCw,
+          }}
+        >
+          Could not load projects: {error}
+        </Notice>
       ) : null}
 
       {projects === null && loading ? (
@@ -215,7 +206,7 @@ export function ProjectsPage() {
               <div className="mt-4 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  className="btn px-2.5 py-1.5"
+                  className="btn btn-sm"
                   onClick={() => setEditing(project)}
                   aria-label={`Rename ${project.name}`}
                 >
@@ -224,7 +215,7 @@ export function ProjectsPage() {
                 </button>
                 <button
                   type="button"
-                  className="btn px-2.5 py-1.5 text-danger hover:border-danger"
+                  className="btn btn-sm text-danger hover:border-danger"
                   onClick={() => setDeleting(project)}
                   aria-label={`Remove ${project.name}`}
                 >

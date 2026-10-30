@@ -1,8 +1,9 @@
-import { Loader2, RefreshCw, Wrench, X } from 'lucide-react';
+import { Loader2, RefreshCw, Wrench } from 'lucide-react';
 import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import type { AppOutletContext } from '../components/AppLayout';
 import { EnabledBadge, LaunchBadge, ToolStatusBadge } from '../components/Badge';
+import { Notice } from '../components/Notice';
 import { apiPatch, apiPost } from '../lib/api';
 import type { ToolCheckResponse } from '../lib/types';
 
@@ -69,44 +70,24 @@ export function CliToolsPage() {
       </section>
 
       {checkMessage ? (
-        <div className="flex items-start justify-between gap-3 rounded-panel border border-line bg-panel-2 px-4 py-3 text-sm text-ink">
+        <Notice tone="success" onDismiss={() => setCheckMessage(null)}>
           <span className="break-all">{checkMessage}</span>
-          <button
-            type="button"
-            className="rounded p-1 text-muted hover:bg-hover hover:text-ink"
-            onClick={() => setCheckMessage(null)}
-            aria-label="Dismiss check result"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        </Notice>
       ) : null}
 
       {checkError ? (
-        <div
-          role="alert"
-          className="flex items-start justify-between gap-3 rounded-panel border border-line bg-danger-soft px-4 py-3 text-sm text-ink"
-        >
-          <span>{checkError}</span>
-          <button
-            type="button"
-            className="rounded p-1 text-muted hover:bg-hover hover:text-ink"
-            onClick={() => setCheckError(null)}
-            aria-label="Dismiss check error"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <Notice tone="danger" onDismiss={() => setCheckError(null)}>
+          {checkError}
+        </Notice>
       ) : null}
 
       {overviewError ? (
-        <div className="flex flex-col gap-3 rounded-panel border border-line bg-danger-soft px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-          <span>Could not load CLI profiles: {overviewError}</span>
-          <button type="button" className="btn px-3 py-1.5" onClick={() => void refresh()}>
-            <RefreshCw className="h-3.5 w-3.5" />
-            Retry
-          </button>
-        </div>
+        <Notice
+          tone="danger"
+          action={{ label: 'Retry', onClick: () => void refresh(), icon: RefreshCw }}
+        >
+          Could not load CLI profiles: {overviewError}
+        </Notice>
       ) : null}
 
       {!overview ? (
@@ -178,7 +159,7 @@ export function CliToolsPage() {
                   {tool.enabled ? (
                     <button
                       type="button"
-                      className="btn px-2.5 py-1.5 text-danger hover:border-danger"
+                      className="btn btn-sm text-danger hover:border-danger"
                       onClick={() => void toggleTool(tool.id, false)}
                       disabled={togglingId !== null || checkingId !== null}
                       data-testid={`toggle-tool-${tool.id}`}
@@ -191,7 +172,7 @@ export function CliToolsPage() {
                   ) : (
                     <button
                       type="button"
-                      className="btn btn-primary px-2.5 py-1.5"
+                      className="btn btn-primary btn-sm"
                       onClick={() => void toggleTool(tool.id, true)}
                       disabled={togglingId !== null || checkingId !== null || !tool.launchVerified}
                       title={
@@ -209,7 +190,7 @@ export function CliToolsPage() {
                   )}
                   <button
                     type="button"
-                    className="btn px-2.5 py-1.5"
+                    className="btn btn-sm"
                     onClick={() => void checkTool(tool.id)}
                     disabled={checkingId !== null || togglingId !== null}
                     data-testid={`check-tool-${tool.id}`}

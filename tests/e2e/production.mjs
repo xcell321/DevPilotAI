@@ -393,6 +393,7 @@ try {
   assert(isAlive(pid), 'Production terminal process died during reload');
   console.log('PASS production reload reattached to the same live process with replay');
 
+  await page.getByTestId(`terminal-menu-${terminalId}`).click();
   await page.getByTestId(`maximize-terminal-${terminalId}`).click();
   await page.getByTestId(`terminal-panel-${terminalId}`).waitFor({
     state: 'visible',
@@ -404,12 +405,14 @@ try {
     ),
     'Terminal did not maximize',
   );
+  await page.getByTestId(`terminal-menu-${terminalId}`).click();
   await page.getByTestId(`maximize-terminal-${terminalId}`).click();
   console.log('PASS terminal maximize and restore controls updated the real xterm panel');
 
   fs.rmSync(fixtureEvidence, { force: true });
   await page.getByTestId('add-terminal-choice').selectOption('tool:production-echo-b');
-  await page.getByTestId('split-terminal-right').click();
+  await page.getByTestId(`terminal-menu-${terminalId}`).click();
+  await page.getByTestId(`split-terminal-right-${terminalId}`).click();
   await waitUntil(async () => {
     session = (await api('/api/sessions')).sessions.find((entry) => entry.id === sessionId);
     return session.terminals.length === 2;
@@ -469,6 +472,7 @@ try {
   console.log('PASS adding an isolated terminal preserved the existing PTY and workspace');
 
   fs.rmSync(fixtureEvidence, { force: true });
+  await page.getByTestId(`terminal-menu-${terminalId}`).click();
   await page.getByTestId(`restart-terminal-${terminalId}`).click();
   await waitUntil(async () => {
     session = (await api('/api/sessions')).sessions.find((entry) => entry.id === sessionId);
@@ -521,7 +525,8 @@ try {
   updateDb.prepare('UPDATE tool_profiles SET enabled = 0 WHERE id = ?').run('production-disabled');
   updateDb.close();
   await page.getByTestId('add-terminal-choice').selectOption('tool:production-disabled');
-  await page.getByTestId('split-terminal-right').click();
+  await page.getByTestId(`terminal-menu-${terminalId}`).click();
+  await page.getByTestId(`split-terminal-right-${terminalId}`).click();
   await page.waitForFunction(() =>
     document
       .querySelector('[role="alert"]')
@@ -550,6 +555,7 @@ try {
   console.log('PASS rejected terminal creation surfaced the reason and preserved the workspace');
 
   await page.getByTestId('add-terminal-choice').selectOption('tool:production-echo-c');
+  await page.getByTestId(`terminal-menu-${terminalBId}`).click();
   await page.getByTestId(`split-terminal-down-${terminalBId}`).click();
   await waitUntil(async () => {
     session = (await api('/api/sessions')).sessions.find((entry) => entry.id === sessionId);
@@ -603,6 +609,7 @@ try {
     session.terminals.map((terminal) => [terminal.id, terminal.pid]),
   );
   await page.getByTestId('add-terminal-choice').selectOption('tool:production-echo-d');
+  await page.getByTestId(`terminal-menu-${terminalCId}`).click();
   await page.getByTestId(`split-terminal-left-${terminalCId}`).click();
   await waitUntil(async () => {
     session = (await api('/api/sessions')).sessions.find((entry) => entry.id === sessionId);
@@ -699,6 +706,7 @@ try {
   const pidsBeforeGridReload = new Map(
     session.terminals.map((terminal) => [terminal.id, terminal.pid]),
   );
+  await page.getByTestId(`terminal-menu-${terminalDId}`).click();
   await page.getByTestId(`maximize-terminal-${terminalDId}`).click();
   await waitUntil(
     async () =>
@@ -707,6 +715,7 @@ try {
       ),
     'Focus mode did not maximize the selected terminal',
   );
+  await page.getByTestId(`terminal-menu-${terminalDId}`).click();
   await page.getByTestId(`maximize-terminal-${terminalDId}`).click();
   const originalViewport = page.viewportSize() ?? { width: 1280, height: 720 };
   await waitUntil(
@@ -780,7 +789,8 @@ try {
     sessionId,
   );
   const upTargetId = savedBeforeUp.activeTerminalId;
-  await page.getByTestId('split-terminal-up').click();
+  await page.getByTestId(`terminal-menu-${upTargetId}`).click();
+  await page.getByTestId(`split-terminal-up-${upTargetId}`).click();
   await page.getByTestId(`terminal-panel-${terminalDId}`).waitFor({ state: 'visible' });
   await waitUntil(async () => {
     session = (await api('/api/sessions')).sessions.find((entry) => entry.id === sessionId);
@@ -817,7 +827,13 @@ try {
   );
   fs.rmSync(thirdFixtureEvidence, { force: true });
   await page.getByTestId('add-terminal-choice').selectOption(`terminal:${terminalCId}`);
-  await page.getByTestId('split-terminal-down').click();
+  const savedBeforeDown = await page.evaluate(
+    (id) => JSON.parse(localStorage.getItem(`devpilot-terminal-layout-v1:${id}`)),
+    sessionId,
+  );
+  const downTargetId = savedBeforeDown.activeTerminalId;
+  await page.getByTestId(`terminal-menu-${downTargetId}`).click();
+  await page.getByTestId(`split-terminal-down-${downTargetId}`).click();
   await page.getByTestId(`terminal-panel-${terminalCId}`).waitFor({ state: 'visible' });
   await waitUntil(async () => {
     session = (await api('/api/sessions')).sessions.find((entry) => entry.id === sessionId);
