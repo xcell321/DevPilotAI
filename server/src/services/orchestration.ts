@@ -1268,7 +1268,17 @@ export class OrchestrationService {
   }
 
   private serializeTick<T>(operation: () => Promise<T>): Promise<T> {
-    const run = this.tickChain.catch(() => undefined).then(operation);
+    const run = this.tickChain.catch(() => undefined).then(() =>
+      Promise.race<T>([
+        operation(),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`Scheduler tick timed out after ${this.tickTimeoutMs}ms`)),
+            this.tickTimeoutMs,
+          ),
+        ),
+      ]),
+    );
     this.tickChain = run.then(
       () => undefined,
       () => undefined,
@@ -1277,7 +1287,17 @@ export class OrchestrationService {
   }
 
   private serializeQueue<T>(operation: () => Promise<T>): Promise<T> {
-    const run = this.queueChain.catch(() => undefined).then(operation);
+    const run = this.queueChain.catch(() => undefined).then(() =>
+      Promise.race<T>([
+        operation(),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`Integration queue tick timed out after ${this.tickTimeoutMs}ms`)),
+            this.tickTimeoutMs,
+          ),
+        ),
+      ]),
+    );
     this.queueChain = run.then(
       () => undefined,
       () => undefined,

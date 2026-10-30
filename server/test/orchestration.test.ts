@@ -1821,3 +1821,58 @@ describe('dependency base inheritance and combined-candidate validation', () => 
     expect(targetTreeFile(project.path, 'src/consumer.cjs')).toBe(CONSUMER_SOURCE);
   }, 45_000);
 });
+
+describe('scheduler watchdog', () => {
+  it('does not block subsequent ticks when a tick times out', async () => {
+    const project = await makeProject('Watchdog Project');
+    addProfile('watchdog-agent', 5_000);
+
+    const session = await createSession(project.id, ['watchdog-agent'], [
+      { description: 'First task', declaredFileScope: ['src'] },
+    ]);
+    const terminal = session.terminals[0]!;
+    await waitForAgentExit(session.id, terminal.id);
+    await stopSession(session.id);
+    commitFile(terminal.workspace!.workingDirectory, 'src/done.txt', 'done\n');
+    await authorized('post', `/api/orchestration/tasks/${terminal.id}/complete`).send({
+      summary: 'Completed work',
+    });
+    const integrated = await authorized('post', `/api/orchestration/tasks/${terminal.id}/integrate`).send({
+      acknowledgeNoValidation: true,
+    });
+    expect(integrated.status).toBe(200);
+    expect(integrated.body.task.state).toBe('integrated');
+
+    // Test the serializeTick timeout directly by creating an orchestration with a short timeout
+    // and verifying that a slow operation in the tick chain times out but the chain continues
+    const watchdogOrchestration = new OrchestrationService({
+      db,
+      sessions: sessionService,
+      maxConcurrentAgents: 2,
+      maxLiveTerminals: 8,
+      runtimeDir: config.runtimeDir,
+      schedulerTickTimeoutMs: 100, // Very short timeout
+    });
+
+    // Create a slow operation that exceeds the 100ms timeout
+    const slowOperation = async (): Promise<string> => {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      return 'done';
+    };
+
+    // First tick with slow operation - should timeout
+    const firstTick = watchdogOrchestration['serializeTick'](slowOperation);
+    await expect(firstTick).rejects.toThrow(/timed out/);
+
+    // Second tick with fast operation - should succeed (chain not blocked)
+    const fastOperation = async (): Promise<string> => {
+      return 'fast';
+    };
+    const secondTick = watchdogOrchestration['serializeTick'](fastOperation);
+    await expect(secondTick).resolves.toBe('fast');
+
+    // Clean up
+    await waitForAgentExit(session.id, terminal.id);
+    await stopSession(session.id);
+  }, 30_000);
+});
