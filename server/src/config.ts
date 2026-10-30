@@ -27,6 +27,9 @@ export interface AppConfig {
   maxTerminalsPerSession: number;
   maxConcurrentAgents: number;
   version: string;
+  schedulerTickTimeoutMs: number;
+  processStopGraceMs: number;
+  processForceWaitMs: number;
 }
 
 const envSchema = z.object({
@@ -53,6 +56,24 @@ const envSchema = z.object({
     .min(1)
     .max(MAX_CONCURRENT_AGENTS)
     .default(DEFAULT_MAX_CONCURRENT_AGENTS),
+  DEVPILOT_SCHEDULER_TICK_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(1000)
+    .max(300000)
+    .default(30000),
+  DEVPILOT_PROCESS_STOP_GRACE_MS: z.coerce
+    .number()
+    .int()
+    .min(100)
+    .max(60000)
+    .default(250),
+  DEVPILOT_PROCESS_FORCE_WAIT_MS: z.coerce
+    .number()
+    .int()
+    .min(500)
+    .max(30000)
+    .default(2000),
 });
 
 export const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
@@ -120,6 +141,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     1,
     Math.min(value.DEVPILOT_MAX_CONCURRENT_AGENTS, MAX_CONCURRENT_AGENTS, maxTerminals),
   );
+  const schedulerTickTimeoutMs = value.DEVPILOT_SCHEDULER_TICK_TIMEOUT_MS;
+  const processStopGraceMs = value.DEVPILOT_PROCESS_STOP_GRACE_MS;
+  const processForceWaitMs = value.DEVPILOT_PROCESS_FORCE_WAIT_MS;
 
   return {
     repoRoot,
@@ -135,5 +159,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     maxTerminalsPerSession,
     maxConcurrentAgents,
     version: readServerVersion(),
+    schedulerTickTimeoutMs,
+    processStopGraceMs,
+    processForceWaitMs,
   };
 }

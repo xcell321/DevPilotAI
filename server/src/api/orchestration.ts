@@ -186,6 +186,29 @@ export function createOrchestrationRouter(
     }
   });
 
+  // Admin endpoints - force release leases and delete task
+  router.post('/admin/tasks/:taskId/force-release-leases', (req, res) => {
+    try {
+      const input = parseBody(
+        z.object({ reason: z.string().trim().min(1).max(4000) }).strict(),
+        req.body,
+      );
+      const released = service.forceReleaseLeases(taskIdOf(req), input.reason);
+      res.json({ released });
+    } catch (error) {
+      sendApiError(res, error);
+    }
+  });
+
+  router.delete('/admin/tasks/:taskId', (req, res) => {
+    try {
+      service.deleteTask(taskIdOf(req));
+      res.json({ ok: true });
+    } catch (error) {
+      sendApiError(res, error);
+    }
+  });
+
   router.post('/sessions/:sessionId/scheduling', (req, res) => {
     try {
       const sessionId = parseBody(idSchema, req.params.sessionId);

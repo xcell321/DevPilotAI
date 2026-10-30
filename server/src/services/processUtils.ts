@@ -74,9 +74,10 @@ export function killProcessTree(pid: number | undefined): void {
     return;
   }
 
+  // On POSIX, kill the process group to reap the entire tree.
   try {
-    process.kill(pid, 'SIGKILL');
+    process.kill(-pid, 'SIGKILL');
   } catch {
-    // Process already exited.
+    // Process group already exited or no permission.
   }
 }

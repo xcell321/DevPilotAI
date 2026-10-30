@@ -8,7 +8,7 @@ export const migration008: Migration = {
       ADD COLUMN state TEXT NOT NULL DEFAULT 'unassigned'
         CHECK (state IN (
           'unassigned', 'blocked', 'ready', 'assigned', 'running',
-          'validating', 'awaiting_integration', 'integrated', 'failed', 'cancelled'
+          'validating', 'awaiting_integration', 'integrated', 'failed', 'cancelled', 'interrupted'
         ));
 
     ALTER TABLE agent_tasks ADD COLUMN blocked_reason TEXT;

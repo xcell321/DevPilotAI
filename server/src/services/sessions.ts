@@ -1070,6 +1070,8 @@ export class SessionService {
       }
       this.db.transaction(() => {
         for (const terminal of terminals) {
+          this.db.prepare('DELETE FROM agent_workspaces WHERE terminal_id = ?').run(terminal.id);
+          this.db.prepare('DELETE FROM agent_tasks WHERE terminal_id = ?').run(terminal.id);
           this.db.prepare('DELETE FROM session_terminals WHERE id = ?').run(terminal.id);
         }
         this.db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
@@ -1138,6 +1140,31 @@ export class SessionService {
         terminalWrite(this.db, terminal.id, 'error', code, message);
         refreshSessionStatus(this.db, sessionId);
       }
+    }
+
+    // Read-back check: if any terminal failed to start (except terminal_limit which is expected capacity behavior), clean up and throw 409
+    const terminalStates = this.db
+      .prepare('SELECT id, process_status, error_code, last_error FROM session_terminals WHERE session_id = ?')
+      .all(sessionId) as Array<{ id: string; process_status: string; error_code: string | null; last_error: string | null }>;
+    const failedTerminals = terminalStates.filter(
+      (ts) => ts.process_status === 'error' && ts.error_code !== 'terminal_limit',
+    );
+    if (failedTerminals.length > 0) {
+      // Clean up session terminals and agent_tasks/agent_workspaces for failed terminals
+      this.db.transaction(() => {
+        for (const failed of failedTerminals) {
+          this.db.prepare('DELETE FROM agent_workspaces WHERE terminal_id = ?').run(failed.id);
+          this.db.prepare('DELETE FROM agent_tasks WHERE terminal_id = ?').run(failed.id);
+          this.db.prepare('DELETE FROM session_terminals WHERE id = ?').run(failed.id);
+        }
+        refreshSessionStatus(this.db, sessionId);
+      })();
+      const firstFailed = failedTerminals[0]!;
+      throw new ApiError(
+        409,
+        firstFailed.error_code ?? 'start_failed',
+        firstFailed.last_error ?? 'The terminal could not be started.',
+      );
     }
 
     return this.get(sessionId);
@@ -1299,11 +1326,14 @@ export class SessionService {
           // A leftover worktree is preserved for inspection instead of forced.
         }
       }
-      try {
+      this.db.transaction(() => {
+        for (const plan of plans) {
+          this.db.prepare('DELETE FROM agent_workspaces WHERE terminal_id = ?').run(plan.terminalId);
+          this.db.prepare('DELETE FROM agent_tasks WHERE terminal_id = ?').run(plan.terminalId);
+          this.db.prepare('DELETE FROM session_terminals WHERE id = ?').run(plan.terminalId);
+        }
         this.db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
-      } catch {
-        // The session row is already gone or cannot be removed.
-      }
+      })();
       throw error instanceof ApiError
         ? error
         : new ApiError(
@@ -1448,6 +1478,8 @@ export class SessionService {
         | { process_status: string; error_code: string | null; last_error: string | null }
         | undefined;
       if (terminalState?.process_status === 'error') {
+        this.db.prepare('DELETE FROM agent_workspaces WHERE terminal_id = ?').run(terminalId);
+        this.db.prepare('DELETE FROM agent_tasks WHERE terminal_id = ?').run(terminalId);
         this.db.prepare('DELETE FROM session_terminals WHERE id = ?').run(terminalId);
         refreshSessionStatus(this.db, sessionId);
         throw new ApiError(
@@ -1725,6 +1757,8 @@ export class SessionService {
       } else {
         this.db.prepare('DELETE FROM session_terminals WHERE id = ?').run(terminalId);
       }
+      this.db.prepare('DELETE FROM agent_workspaces WHERE terminal_id = ?').run(terminalId);
+      this.db.prepare('DELETE FROM agent_tasks WHERE terminal_id = ?').run(terminalId);
       refreshSessionStatus(this.db, sessionId);
       throw new ApiError(
         409,

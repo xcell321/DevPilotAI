@@ -359,3 +359,17 @@ export async function isAncestor(
   ]);
   return result.code === 0;
 }
+
+/** Deletes a Git branch after successful integration. Uses force delete since we know the changes were integrated. */
+export async function deleteGitBranch(repositoryRoot: string, branch: string): Promise<void> {
+  await validateBranchName(repositoryRoot, branch);
+  const result = await git(repositoryRoot, ['branch', '-D', branch]);
+  if (result.code !== 0) {
+    const detail = result.stderr.trim().split(/\r?\n/)[0] ?? '';
+    throw new ApiError(
+      409,
+      'git_branch_delete_failed',
+      detail ? `Git branch "${branch}" could not be deleted: ${detail}` : `Git branch "${branch}" could not be deleted.`,
+    );
+  }
+}

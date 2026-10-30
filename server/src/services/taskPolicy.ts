@@ -6,6 +6,7 @@ export const TERMINAL_TASK_STATES: readonly AgentTaskState[] = [
   'integrated',
   'failed',
   'cancelled',
+  'interrupted',
 ];
 export const DEFAULT_PROTECTED_PATHS = ['.git'];
 

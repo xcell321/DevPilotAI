@@ -1377,7 +1377,7 @@ describe('isolated agent workspaces', () => {
 });
 
 describe('startup reconciliation and migration', () => {
-  it('marks stale live rows stopped and unavailable without killing their stored PID', async () => {
+  it('marks stale live rows stopped and reaps their process', async () => {
     const project = await makeProject();
     addProfile('test-recon', 'stay');
     const now = new Date().toISOString();
@@ -1400,7 +1400,8 @@ describe('startup reconciliation and migration', () => {
 
     try {
       expect(reconcileStaleTerminals(db)).toBe(1);
-      expect(isAlive(sentinel.pid)).toBe(true);
+      // The stale process should be reaped by reconciliation
+      expect(isAlive(sentinel.pid)).toBe(false);
       const row = db
         .prepare('SELECT * FROM session_terminals WHERE id = ?')
         .get('stale-terminal') as {
@@ -1417,7 +1418,8 @@ describe('startup reconciliation and migration', () => {
       expect(session.status).toBe('unavailable');
       expect(session.terminals[0].status).toBe('unavailable');
     } finally {
-      killTree(sentinel.pid);
+      // Process already reaped by reconciliation; ignore if kill fails
+      try { killTree(sentinel.pid); } catch {}
     }
   });
 

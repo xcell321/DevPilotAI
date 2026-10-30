@@ -63,6 +63,8 @@ const processManager = new ProcessManager({
   db,
   launcher: createPtyLauncher(),
   maxLive: config.maxTerminals,
+  stopTimeoutMs: config.processStopGraceMs,
+  forceWaitMs: config.processForceWaitMs,
 });
 const sessionService = new SessionService(
   db,
@@ -76,6 +78,7 @@ const orchestrationService = new OrchestrationService({
   maxConcurrentAgents: config.maxConcurrentAgents,
   maxLiveTerminals: config.maxTerminals,
   runtimeDir: config.runtimeDir,
+  schedulerTickTimeoutMs: config.schedulerTickTimeoutMs,
 });
 const recoveredTasks = orchestrationService.recover();
 if (recoveredTasks > 0) {

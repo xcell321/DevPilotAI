@@ -372,6 +372,17 @@ export class FileLeaseService {
       .run(new Date().toISOString(), reason, taskId).changes;
   }
 
+  /** Force-releases all active leases for a task, regardless of task state. Admin-only. */
+  forceReleaseTask(taskId: string, reason: string): number {
+    return this.db
+      .prepare(
+        `UPDATE agent_task_leases
+         SET state = 'released', released_at = ?, release_reason = ?
+         WHERE task_id = ? AND state = 'active'`,
+      )
+      .run(new Date().toISOString(), reason, taskId).changes;
+  }
+
   /** Records why an active lease is still being held (for the waiting UI). */
   setHoldReason(taskId: string, reason: string | null): void {
     this.db

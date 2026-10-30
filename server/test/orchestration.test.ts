@@ -930,23 +930,16 @@ describe('integration queue', () => {
     expect(targetTreeFile(project.path, 'src/feature.txt')).toBe('feature\n');
     expect(git(project.path, ['rev-parse', 'main'])).toBe(mainBefore);
     expect(gitResult(project.path, ['status', '--porcelain']).stdout.trim()).toBe('');
-    const branchCommit = git(project.path, [
-      'rev-parse',
-      `refs/heads/${terminal.workspace!.branchName}`,
-    ]).trim();
-    expect(git(project.path, ['merge-base', '--is-ancestor', branchCommit, task.integrationCommit!])).toBe(
-      '',
-    );
 
     const logs = await getLogs(terminal.id);
     expect(logs.integrations).toHaveLength(1);
     expect(logs.integrations[0]!.state).toBe('integrated');
-    // Cleanup is never automatic: the source worktree and branch remain.
-    expect(fs.existsSync(terminal.workspace!.path)).toBe(true);
+    // After successful integration, the worktree and branch are cleaned up.
+    expect(fs.existsSync(terminal.workspace!.path)).toBe(false);
     expect(
       gitResult(project.path, ['rev-parse', '--verify', `refs/heads/${terminal.workspace!.branchName}`])
         .status,
-    ).toBe(0);
+    ).not.toBe(0);
   }, 30_000);
 
   it('rejects protected-path changes and keeps the source branch', async () => {

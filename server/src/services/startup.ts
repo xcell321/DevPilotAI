@@ -3,17 +3,34 @@ import type { Db } from '../db/types';
 import type { ProcessManager } from './processManager';
 import { refreshSessionStatus } from './sessionStatus';
 
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function killProcess(pid: number): void {
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch {
+    // Already exited or no permission.
+  }
+}
+
 export function reconcileStaleTerminals(
   db: Db,
   now = new Date().toISOString(),
 ): number {
   const rows = db
     .prepare(
-      `SELECT id, session_id
+      `SELECT id, session_id, process_pid
        FROM session_terminals
        WHERE process_status IN ('starting', 'running')`,
     )
-    .all() as { id: string; session_id: string }[];
+    .all() as { id: string; session_id: string; process_pid: number | null }[];
 
   if (rows.length === 0) return 0;
 
@@ -25,12 +42,24 @@ export function reconcileStaleTerminals(
      WHERE id = ?`,
   );
   const sessions = new Set<string>();
+  let reaped = 0;
+  let alreadyGone = 0;
   db.transaction(() => {
     for (const row of rows) {
+      if (row.process_pid && isProcessAlive(row.process_pid)) {
+        killProcess(row.process_pid);
+        reaped += 1;
+      } else if (row.process_pid) {
+        alreadyGone += 1;
+      }
       update.run(now, row.id);
       sessions.add(row.session_id);
     }
   })();
+
+  if (reaped > 0 || alreadyGone > 0) {
+    console.log(`[startup] Reconciled ${rows.length} stale terminal(s): ${reaped} process(es) reaped, ${alreadyGone} already gone.`);
+  }
 
   for (const sessionId of sessions) {
     refreshSessionStatus(db, sessionId, now);

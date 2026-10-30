@@ -28,6 +28,7 @@ import {
   createBranchIfMissing,
   createMergeCommit,
   currentBranch,
+  deleteGitBranch,
   fastForwardWorktree,
   headCommit,
   isAncestor,
@@ -182,6 +183,8 @@ export interface OrchestrationOptions {
   maxLiveTerminals?: number;
   /** Root for isolated combined-candidate validation worktrees. */
   runtimeDir?: string;
+  /** Maximum time a scheduling tick may run before it is considered hung. */
+  schedulerTickTimeoutMs?: number;
 }
 
 export interface CandidateValidationResult {
@@ -356,6 +359,7 @@ export class OrchestrationService {
   private readonly executor = new ValidationExecutor();
   private tickChain: Promise<unknown> = Promise.resolve();
   private queueChain: Promise<unknown> = Promise.resolve();
+  private readonly tickTimeoutMs: number;
 
   constructor(options: OrchestrationOptions) {
     this.db = options.db;
@@ -366,6 +370,7 @@ export class OrchestrationService {
     );
     this.maxLiveTerminals = options.maxLiveTerminals ?? this.sessions.maxLiveTerminals;
     this.runtimeDir = options.runtimeDir ?? null;
+    this.tickTimeoutMs = options.schedulerTickTimeoutMs ?? 30000;
     this.leases = new FileLeaseService(this.db);
   }
 
@@ -605,10 +610,26 @@ export class OrchestrationService {
     };
   }
 
-  /** Marks live, assigned tasks as running so the UI reflects the backend state. */
+  /** Marks live, assigned tasks as running so the UI reflects the backend state.
+   * Also demotes tasks whose CLI process died to 'interrupted' so leases are released. */
   syncRunningStates(): number {
     const now = new Date().toISOString();
-    return this.db
+    const demoted = this.db
+      .prepare(
+        `UPDATE agent_tasks
+         SET state = 'interrupted',
+             blocked_reason = 'The agent CLI process died before the task was completed. Task worktree is preserved for recovery.',
+             updated_at = ?
+         WHERE state IN ('assigned', 'running')
+           AND EXISTS (
+             SELECT 1 FROM session_terminals st
+             WHERE st.id = agent_tasks.terminal_id
+               AND st.process_status NOT IN ('starting', 'running')
+               AND st.started_at < datetime('now', '-5 seconds')
+           )`,
+      )
+      .run(now).changes;
+    const promoted = this.db
       .prepare(
         `UPDATE agent_tasks
          SET state = 'running', blocked_reason = NULL, updated_at = ?
@@ -620,6 +641,7 @@ export class OrchestrationService {
            )`,
       )
       .run(now).changes;
+    return demoted + promoted;
   }
 
   scheduleSession(sessionId: string): Promise<ScheduleResult> {
@@ -1366,13 +1388,12 @@ export class OrchestrationService {
         continue;
       }
       if (
-        row.workspace_mode === 'shared' &&
-        (sharedTerminalCounts.get(row.session_id) ?? 0) > 1
+        row.workspace_mode === 'shared'
       ) {
         skipped.push({
           taskId: row.id,
           reason:
-            'Shared-folder sessions with multiple terminals cannot run agent tasks. Convert the session to isolated worktrees first.',
+            'Shared-folder sessions cannot run agent tasks. Convert the session to isolated worktrees first.',
         });
         continue;
       }
@@ -1691,10 +1712,12 @@ export class OrchestrationService {
         this.leases.setHoldReason(row.id, 'The agent CLI is still running.');
         continue;
       }
-      if (row.state === 'integrated') {
+      if (row.state === 'integrated' || row.state === 'interrupted') {
         released += this.leases.releaseTask(
           row.id,
-          'The task changes were integrated successfully.',
+          row.state === 'integrated'
+            ? 'The task changes were integrated successfully.'
+            : 'The agent CLI process died; the task is interrupted and its leases are released.',
         );
         continue;
       }
@@ -2623,6 +2646,23 @@ export class OrchestrationService {
           .run(now, task.session_id);
       })();
 
+      // Clean up the task's worktree and branch after successful integration.
+      // These are best-effort operations: if they fail, we log but don't fail the integration.
+      try {
+        await removeGitWorktree(workspace.repositoryRoot, workspace.worktreePath);
+      } catch (error) {
+        console.error(
+          `[orchestration] Failed to remove worktree for task ${row.task_id}: ${error instanceof Error ? error.message : 'unknown error'}`,
+        );
+      }
+      try {
+        await deleteGitBranch(workspace.repositoryRoot, workspace.branchName);
+      } catch (error) {
+        console.error(
+          `[orchestration] Failed to delete branch for task ${row.task_id}: ${error instanceof Error ? error.message : 'unknown error'}`,
+        );
+      }
+
       // The integrated changes are now safe: release the task's writable files
       // and immediately reschedule so waiting/dependent work can continue.
       this.leases.releaseTask(row.task_id, 'The task changes were integrated successfully.');
@@ -2638,5 +2678,17 @@ export class OrchestrationService {
           : 'The integration failed unexpectedly. The source branch and worktree were preserved.',
       );
     }
+  }
+
+  /** Force-releases all active leases for a task. Admin operation. */
+  forceReleaseLeases(taskId: string, reason: string): number {
+    return this.leases.forceReleaseTask(taskId, reason);
+  }
+
+  /** Deletes a task and its associated data. Admin operation. */
+  deleteTask(taskId: string): void {
+    this.db
+      .prepare(`DELETE FROM agent_tasks WHERE id = ?`)
+      .run(taskId);
   }
 }

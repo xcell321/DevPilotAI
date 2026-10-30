@@ -80,7 +80,8 @@ export type AgentTaskState =
   | 'awaiting_integration'
   | 'integrated'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'interrupted';
 
 export type AgentTaskValidationStatus =
   | 'not_configured'
