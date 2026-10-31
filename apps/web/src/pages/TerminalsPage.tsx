@@ -1,3 +1,4 @@
+import { errorMessage } from '../lib/errors';
 import { Loader2, Plus, Terminal as TerminalIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
@@ -82,7 +83,7 @@ export function TerminalsPage() {
       setLoadError(null);
     } catch (error) {
       if (requestId !== requestRef.current) return;
-      setLoadError(error instanceof Error ? error.message : 'Could not load sessions.');
+      setLoadError(errorMessage(error, 'Could not load sessions.'));
     } finally {
       if (requestId === requestRef.current) setLoading(false);
     }
@@ -125,7 +126,7 @@ export function TerminalsPage() {
       .catch((error: unknown) => {
         if (ignore) return;
         setActionError(
-          error instanceof Error ? error.message : 'CLI profiles could not be loaded.',
+          errorMessage(error, 'CLI profiles could not be loaded.'),
         );
       });
     return () => {
@@ -225,7 +226,7 @@ export function TerminalsPage() {
       void backend.refresh();
       void load();
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'The terminal action failed.');
+      setActionError(errorMessage(error, 'The terminal action failed.'));
     } finally {
       setAction(null);
     }
@@ -246,7 +247,7 @@ export function TerminalsPage() {
       void backend.refresh();
       void load();
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Could not stop the session.');
+      setActionError(errorMessage(error, 'Could not stop the session.'));
     } finally {
       setSessionStopping(false);
     }
@@ -265,7 +266,7 @@ export function TerminalsPage() {
       void backend.refresh();
       await load();
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Could not start terminals.');
+      setActionError(errorMessage(error, 'Could not start terminals.'));
     } finally {
       setSessionStarting(false);
     }
@@ -286,7 +287,7 @@ export function TerminalsPage() {
       void backend.refresh();
       await load();
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Could not delete the session.');
+      setActionError(errorMessage(error, 'Could not delete the session.'));
     } finally {
       setDeletingSession(false);
     }
@@ -379,7 +380,7 @@ export function TerminalsPage() {
         updatePreferences({ maximizedTerminalId: null });
       }
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Could not close the terminal.');
+      setActionError(errorMessage(error, 'Could not close the terminal.'));
     } finally {
       setAction(null);
     }
@@ -426,7 +427,7 @@ export function TerminalsPage() {
         void load();
       } catch (error) {
         setActionError(
-          error instanceof Error ? error.message : 'The saved terminal could not be reopened.',
+          errorMessage(error, 'The saved terminal could not be reopened.'),
         );
       } finally {
         addInFlightRef.current = false;
@@ -513,7 +514,7 @@ export function TerminalsPage() {
       void load();
     } catch (error) {
       operationError =
-        error instanceof Error ? error.message : 'Could not add the terminal.';
+        errorMessage(error, 'Could not add the terminal.');
     } finally {
       if (operationError) setActionError(operationError);
       addInFlightRef.current = false;

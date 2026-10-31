@@ -1,3 +1,4 @@
+import { errorMessage } from '../lib/errors';
 import {
   Folder,
   Loader2,
@@ -50,7 +51,7 @@ export function ProjectsPage() {
       setProjects(result.projects);
     } catch (loadError) {
       if (requestId !== requestRef.current) return;
-      setError(loadError instanceof Error ? loadError.message : 'Could not load projects.');
+      setError(errorMessage(loadError, 'Could not load projects.'));
     } finally {
       if (requestId === requestRef.current) setLoading(false);
     }

@@ -1,3 +1,4 @@
+import { errorMessage } from '../lib/errors';
 import { Loader2, RefreshCw, Wrench } from 'lucide-react';
 import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
@@ -31,7 +32,7 @@ export function CliToolsPage() {
       setCheckMessage(`${result.tool.displayName}: ${result.check.status}.${details}`);
       await refresh();
     } catch (error) {
-      setCheckError(error instanceof Error ? error.message : 'Could not check the CLI profile.');
+      setCheckError(errorMessage(error, 'Could not check the CLI profile.'));
     } finally {
       setCheckingId(null);
     }
@@ -46,7 +47,7 @@ export function CliToolsPage() {
       await refresh();
       setCheckMessage(`${id} is now ${enable ? 'enabled' : 'disabled'}.`);
     } catch (error) {
-      setCheckError(error instanceof Error ? error.message : 'Could not update CLI status.');
+      setCheckError(errorMessage(error, 'Could not update CLI status.'));
     } finally {
       setTogglingId(null);
     }

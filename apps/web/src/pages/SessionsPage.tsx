@@ -1,3 +1,4 @@
+import { errorMessage } from '../lib/errors';
 import {
   AlertCircle,
   Loader2,
@@ -9,6 +10,7 @@ import {
   Terminal,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import useAsyncGuard from '../lib/useAsyncGuard';
 import { Link, useOutletContext } from 'react-router-dom';
 import type { AppOutletContext } from '../components/AppLayout';
 import {
@@ -39,6 +41,7 @@ export function SessionsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
   const requestRef = useRef(0);
+  const actionLock = useAsyncGuard();
 
   const load = useCallback(async () => {
     const requestId = ++requestRef.current;
@@ -49,7 +52,7 @@ export function SessionsPage() {
       setLoadError(null);
     } catch (error) {
       if (requestId !== requestRef.current) return;
-      setLoadError(error instanceof Error ? error.message : 'Could not load sessions.');
+      setLoadError(errorMessage(error, 'Could not load sessions.'));
     } finally {
       if (requestId === requestRef.current) setLoading(false);
     }
@@ -67,15 +70,17 @@ export function SessionsPage() {
   }, [load]);
 
   const runAction = async (id: string, pathname: string) => {
-    setActionId(id);
+    if (!actionLock.guard()) return;
     setActionError(null);
+    setActionId(id);
     try {
       await apiPost<{ session: SessionSummary }>(pathname);
       await load();
       await backend.refresh();
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'The terminal action failed.');
+      setActionError(errorMessage(error, 'The terminal action failed.'));
     } finally {
+      actionLock.reset();
       setActionId(null);
     }
   };
