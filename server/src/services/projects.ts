@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { Project } from '../../../shared/api-types.cjs';
 import type { Db } from '../db/types';
 import { ApiError } from '../errors';
@@ -7,6 +9,7 @@ import {
   getProjectPathStatus,
   validateProjectPath,
 } from './projectPaths';
+import { inspectGitRepository, removeGitWorktree } from './gitWorkspaces';
 
 export type ProjectSummary = Project;
 
@@ -158,4 +161,86 @@ export function deleteProject(db: Db, id: string): void {
   }
 
   db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+}
+
+export interface WorktreeCleanupResult {
+  removed: number;
+  failed: string[];
+  skippedInUse: string[];
+}
+
+/**
+ * Removes all isolated worktrees for a project from the runtime directory.
+ * Only targets directories under <runtimeDir>/worktrees/<repoKey>/.
+ * Never touches the main project folder or .git.
+ * Skips worktrees currently in use by live terminals.
+ */
+export async function cleanupProjectWorktrees(
+  db: Db,
+  runtimeDir: string | null,
+  projectId: string,
+  isWorktreeInUse?: (worktreePath: string) => boolean,
+): Promise<WorktreeCleanupResult> {
+  if (!runtimeDir) {
+    throw new ApiError(500, 'workspace_configuration_missing', 'The isolated workspace directory is not configured.');
+  }
+
+  const row = db.prepare('SELECT id, path FROM projects WHERE id = ?').get(projectId) as
+    | { id: string; path: string }
+    | undefined;
+  if (!row) throw new ApiError(404, 'project_not_found', 'Project not found.');
+
+  // Find the git repository root for this project
+  let repositoryRoot: string;
+  try {
+    const snapshot = await inspectGitRepository(row.path);
+    repositoryRoot = snapshot.repositoryRoot;
+  } catch {
+    // Not a git repo — nothing to clean up
+    return { removed: 0, failed: [], skippedInUse: [] };
+  }
+
+  // Compute the repository key (same algorithm as getGitWorkspacePaths)
+  const repositoryKey = crypto
+    .createHash('sha256')
+    .update(path.resolve(repositoryRoot).toLowerCase())
+    .digest('hex')
+    .slice(0, 16);
+
+  const worktreesBase = path.join(runtimeDir, 'worktrees', repositoryKey);
+  if (!fs.existsSync(worktreesBase)) {
+    return { removed: 0, failed: [], skippedInUse: [] };
+  }
+
+  const result: WorktreeCleanupResult = { removed: 0, failed: [], skippedInUse: [] };
+
+  // Walk: worktrees/<repoKey>/<sessionId>/<terminalId>
+  const sessionDirs = fs.readdirSync(worktreesBase, { withFileTypes: true }).filter((d) => d.isDirectory());
+  for (const sessionDir of sessionDirs) {
+    const sessionPath = path.join(worktreesBase, sessionDir.name);
+    const terminalDirs = fs.readdirSync(sessionPath, { withFileTypes: true }).filter((d) => d.isDirectory());
+    for (const terminalDir of terminalDirs) {
+      const worktreePath = path.join(sessionPath, terminalDir.name);
+      // Safety: ensure we're still under the worktrees base
+      const resolved = path.resolve(worktreePath);
+      if (!resolved.startsWith(path.resolve(worktreesBase) + path.sep)) continue;
+
+      if (isWorktreeInUse?.(resolved)) {
+        result.skippedInUse.push(worktreePath);
+        continue;
+      }
+      try {
+        await removeGitWorktree(repositoryRoot, worktreePath);
+        // Remove empty parent session dir
+        try {
+          if (fs.readdirSync(sessionPath).length === 0) fs.rmdirSync(sessionPath);
+        } catch { /* ignore */ }
+        result.removed++;
+      } catch {
+        result.failed.push(worktreePath);
+      }
+    }
+  }
+
+  return result;
 }

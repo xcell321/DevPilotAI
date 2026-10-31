@@ -1,4 +1,4 @@
-import { Loader2, Play, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, Play, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiGet, apiPost, apiPut } from '../lib/api';
@@ -53,6 +53,7 @@ export function WorkflowComposer({
   const [error, setError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
 
   useEffect(() => {
     let ignore = false;
@@ -154,6 +155,7 @@ export function WorkflowComposer({
       }>('/api/orchestration/workflows/preview', {
         projectId,
         prompt,
+        sessionId: session?.id,
       });
       setPreview({
         projectId,
@@ -182,6 +184,7 @@ export function WorkflowComposer({
         projectId: preview.projectId,
         prompt: preview.prompt,
         planFingerprint: preview.planFingerprint,
+        sessionId: session?.id,
       });
       setOrchestration(result.orchestration);
       setOrchestrationSessionId(result.session.id);
@@ -271,12 +274,29 @@ export function WorkflowComposer({
 
   return (
     <section
-      className={`flex shrink-0 flex-col border-b border-line ${
-        compact ? 'gap-2 pb-3' : 'gap-3 pb-4'
-      }`}
+      className={`flex shrink-0 flex-col ${compact ? 'gap-2' : 'gap-3'}`}
       aria-labelledby="workflow-composer-title"
       data-testid="workflow-composer"
     >
+      {collapsed && !activeWorkflow ? (
+        <div className="flex items-center justify-between gap-3 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-brass" />
+            <span className="eyebrow text-muted">Start an automatic workflow</span>
+          </div>
+          <button
+            type="button"
+            className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-muted hover:text-ink"
+            onClick={() => setCollapsed(false)}
+            aria-label="Expand workflow composer"
+            aria-expanded={false}
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+            expand
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3 px-3 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2
@@ -290,6 +310,17 @@ export function WorkflowComposer({
             <p className="mt-1 text-[11px] text-muted">{COMPOSER_GUIDE}</p>
           ) : null}
         </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            className="flex items-center gap-1 text-[11px] font-medium text-muted hover:text-ink"
+            onClick={() => setCollapsed(true)}
+            aria-label="Collapse workflow composer"
+            aria-expanded={true}
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+            collapse
+          </button>
         {compact ? (
           <button
             type="button"
@@ -300,6 +331,7 @@ export function WorkflowComposer({
             How it works
           </button>
         ) : null}
+        </div>
       </div>
 
       {unavailableTools.length > 0 && tools !== null ? (
@@ -488,6 +520,8 @@ export function WorkflowComposer({
       ) : null}
 
       {error ? <Notice tone="danger">{error}</Notice> : null}
+        </div>
+      )}
     </section>
   );
 }

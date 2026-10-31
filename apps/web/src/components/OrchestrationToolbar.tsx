@@ -8,6 +8,7 @@ interface OrchestrationToolbarProps {
   busyKey: string | null;
   onSchedule: () => void;
   onProcessQueue: () => void;
+  onMergeAll: () => void;
   onToggleScheduling: () => void;
   onRefresh: () => void;
 }
@@ -18,6 +19,7 @@ export function OrchestrationToolbar({
   busyKey,
   onSchedule,
   onProcessQueue,
+  onMergeAll,
   onToggleScheduling,
   onRefresh,
 }: OrchestrationToolbarProps) {
@@ -56,6 +58,21 @@ export function OrchestrationToolbar({
               <ShieldCheck className="h-3.5 w-3.5" />
             )}
             Run integration queue
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            onClick={onMergeAll}
+            disabled={busyKey !== null}
+            data-testid="orchestration-merge-all"
+            title="Merge all completed tasks with one click"
+          >
+            {busyKey === 'merge-all' ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <GitMerge className="h-3.5 w-3.5" />
+            )}
+            Merge all
           </button>
           <button
             type="button"

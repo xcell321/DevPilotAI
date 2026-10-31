@@ -65,7 +65,7 @@ describe('health', () => {
     expect(response.body.status).toBe('ok');
     expect(response.body.app.name).toBe('DevPilot AI');
     expect(response.body.terminalSupport.status).toBe('available');
-    expect(response.body.database.schemaVersion).toBe(11);
+    expect(response.body.database.schemaVersion).toBe(13);
     expect(JSON.stringify(response.body)).not.toContain(TOKEN);
   });
 
@@ -245,17 +245,17 @@ describe('database schema and migrations', () => {
         'tool_profiles',
       ]),
     );
-    expect(db.pragma('user_version', { simple: true })).toBe(11);
+    expect(db.pragma('user_version', { simple: true })).toBe(13);
   });
 
   it('is idempotent when migrations run again', () => {
     const version = runMigrations(db);
 
-    expect(version).toBe(11);
+    expect(version).toBe(13);
     expect(
       (db.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get() as { count: number })
         .count,
-    ).toBe(11);
+    ).toBe(13);
   });
 
   it('enforces case-insensitive uniqueness on the normalized project path', () => {
@@ -545,7 +545,7 @@ describe('projects', () => {
     legacy.close();
 
     const migrated = openDatabase(legacyPath);
-    expect(migrated.pragma('user_version', { simple: true })).toBe(11);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(13);
     const row = migrated
       .prepare('SELECT path_key FROM projects WHERE id = ?')
       .get('legacy-project') as { path_key: string };

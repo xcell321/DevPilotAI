@@ -1,0 +1,85 @@
+<svg width="512" height="160" viewBox="0 0 512 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Concept C Lockup: Pure Didone wordmark + "AI" small caps -->
+
+  <!-- DevPilot (from concept-c) -->
+  <g transform="translate(0, 0)">
+    <!-- D -->
+    <g transform="translate(64, 100)">
+      <path d="M-20 0 V-80" stroke="black" stroke-width="10" stroke-linecap="square"/>
+      <path d="M-28 -80 H-12" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+      <path d="M-28 0 H-12" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+      <path d="M-10 -80 C10 -80 20 -60 20 -40 C20 -20 10 0 -10 0" stroke="black" stroke-width="10" fill="none" stroke-linecap="round"/>
+      <circle cx="-10" cy="0" r="5" fill="black"/>
+      <path d="M-8 -40 V-20" stroke="black" stroke-width="2" stroke-linecap="round"/>
+    </g>
+    <!-- e -->
+    <g transform="translate(128, 100)">
+      <path d="M-18 -24 H18" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+      <path d="M0 -48 C14 -48 22 -36 22 -24 C22 -12 14 0 0 0 C-14 0 -22 -12 -22 -24 C-22 -36 -14 -48 0 -48" stroke="black" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <circle cx="18" cy="-24" r="3" fill="black"/>
+    </g>
+    <!-- v (ligatured with P) -->
+    <g transform="translate(172, 100)">
+      <path d="M-16 0 L-4 -32" stroke="black" stroke-width="2" stroke-linecap="square"/>
+      <path d="M4 -32 L16 0" stroke="black" stroke-width="10" stroke-linecap="square"/>
+      <path d="M-19 0 H-13" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+      <path d="M13 0 H19" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+      <circle cx="-16" cy="0" r="4" fill="black"/>
+      <circle cx="16" cy="0" r="5" fill="black"/>
+    </g>
+    <!-- P (shared stem with v) -->
+    <g transform="translate(216, 100)">
+      <path d="M4 -32 V-80" stroke="black" stroke-width="10" stroke-linecap="square"/>
+      <path d="M-4 -80 H12" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+      <path d="M4 -80 C18 -80 26 -64 26 -48 C26 -32 18 -20 4 -20 C4 -12 -6 -8 -10 0" stroke="black" stroke-width="10" fill="none" stroke-linecap="round"/>
+      <circle cx="-10" cy="0" r="5" fill="black"/>
+    </g>
+    <!-- i -->
+    <g transform="translate(244, 100)">
+      <path d="M0 0 V-48" stroke="black" stroke-width="2" stroke-linecap="square"/>
+      <path d="M-6 -48 H6" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+      <path d="M-6 0 H6" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+      <circle cx="0" cy="-58" r="3" fill="black"/>
+    </g>
+    <!-- l -->
+    <g transform="translate(268, 100)">
+      <path d="M0 0 V-80" stroke="black" stroke-width="2" stroke-linecap="square"/>
+      <path d="M-6 -80 H6" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+      <path d="M-6 0 H6" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+      <circle cx="0" cy="-80" r="4" fill="black"/>
+    </g>
+    <!-- i -->
+    <g transform="translate(292, 100)">
+      <path d="M0 0 V-48" stroke="black" stroke-width="2" stroke-linecap="square"/>
+      <path d="M-6 -48 H6" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+      <path d="M-6 0 H6" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+      <circle cx="0" cy="-58" r="3" fill="black"/>
+    </g>
+    <!-- o -->
+    <g transform="translate(324, 100)">
+      <path d="M0 -48 C14 -48 22 -36 22 -24 C22 -12 14 0 0 0 C-14 0 -22 -12 -22 -24 C-22 -36 -14 -48 0 -48" stroke="black" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <path d="M0 -40 C8 -40 12 -32 12 -24 C12 -16 8 -8 0 -8 C-8 -8 -12 -16 -12 -24 C-12 -32 -8 -40 0 -40" stroke="black" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.3"/>
+    </g>
+    <!-- t (ligatured with l) -->
+    <g transform="translate(364, 100)">
+      <path d="M-22 -72 H22" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+      <path d="M0 -48 V0" stroke="black" stroke-width="2" stroke-linecap="square"/>
+      <circle cx="0" cy="-80" r="4" fill="black"/>
+      <path d="M-6 0 H6" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+    </g>
+  </g>
+
+  <!-- AI small caps at x=384 -->
+  <g transform="translate(400, 100)">
+    <!-- A -->
+    <path d="M-12 0 V-48" stroke="black" stroke-width="5" stroke-linecap="square"/>
+    <path d="M12 0 V-48" stroke="black" stroke-width="5" stroke-linecap="square"/>
+    <path d="M-12 -24 H12" stroke="black" stroke-width="4" stroke-linecap="square"/>
+    <path d="M-15 0 H-9" stroke="black" stroke-width="2" stroke-linecap="square"/>
+    <path d="M9 0 H15" stroke="black" stroke-width="2" stroke-linecap="square"/>
+    <!-- I -->
+    <path d="M32 0 V-48" stroke="black" stroke-width="5" stroke-linecap="square"/>
+    <path d="M26 -48 H38" stroke="black" stroke-width="2" stroke-linecap="square"/>
+    <path d="M26 0 H38" stroke="black" stroke-width="2" stroke-linecap="square"/>
+  </g>
+</svg>

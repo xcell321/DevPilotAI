@@ -87,6 +87,17 @@ const MENU_ESTIMATED_HEIGHT_PX = 256;
 const MENU_OFFSET_PX = 4;
 const MENU_VIEWPORT_GUTTER_PX = 8;
 
+// Shorten worktree paths for display: strip the .devpilot\worktrees\<ids> suffix
+// so "C:\CAPSTONE\DevPilotAI\.devpilot\worktrees\abc123\..." shows as "C:\CAPSTONE\DevPilotAI".
+// Non-worktree paths are returned unchanged.
+function shortWorkdir(path: string): string {
+  const idx = path.toLowerCase().indexOf('.devpilot');
+  if (idx > 0) {
+    return path.slice(0, idx).replace(/[\\/]+$/, '');
+  }
+  return path;
+}
+
 interface PanelMenuItemProps {
   icon: LucideIcon;
   label: string;
@@ -619,7 +630,7 @@ export function TerminalPanel({
           }}
         >
           <span className="min-w-0 truncate" title={workingDirectory}>
-            {workingDirectory}
+            {shortWorkdir(workingDirectory)}
           </span>
           {terminal.workspace?.branchName ? (
             <span className="shrink-0 truncate" title={terminal.workspace.branchName}>

@@ -1,0 +1,8 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Favicon 16px: simplified diamond-D -->
+  <rect x="1" y="1" width="14" height="14" rx="3" fill="#C6A15B"/>
+  <g transform="translate(8, 8)">
+    <polygon points="0,-5 5,0 0,5 -5,0" fill="#0F100E"/>
+    <polygon points="0,-2 2,0 0,2 -2,0" fill="#C6A15B"/>
+  </g>
+</svg>

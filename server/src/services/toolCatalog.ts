@@ -11,6 +11,8 @@ export interface ToolDefinition {
   launchVerified: boolean;
   authGuidance: string;
   notes: string;
+  /** Keys to send (with delay) before the task text, to dismiss startup TUIs. */
+  startupKeys?: string[];
 }
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
@@ -53,6 +55,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       'Run freebuff in the terminal to sign in and activate your session streak.',
     notes:
       'Interactive Freebuff launch verified. Tested with node-pty (streak active, task prompt responsive).',
+    startupKeys: ['\r'],
   },
   {
     id: 'copilot',

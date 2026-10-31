@@ -1419,7 +1419,11 @@ describe('startup reconciliation and migration', () => {
       expect(session.terminals[0].status).toBe('unavailable');
     } finally {
       // Process already reaped by reconciliation; ignore if kill fails
-      try { killTree(sentinel.pid); } catch {}
+      try {
+        killTree(sentinel.pid);
+      } catch {
+        // ignore failure
+      }
     }
   });
 
@@ -1478,7 +1482,7 @@ describe('startup reconciliation and migration', () => {
     legacy.close();
 
     const migrated = openDatabase(legacyPath);
-    expect(migrated.pragma('user_version', { simple: true })).toBe(11);
+    expect(migrated.pragma('user_version', { simple: true })).toBe(13);
     const tools = migrated
       .prepare('SELECT id, launch_verified FROM tool_profiles ORDER BY id')
       .all() as { id: string; launch_verified: number }[];

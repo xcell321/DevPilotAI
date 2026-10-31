@@ -244,6 +244,20 @@ export function TaskOrchestrationPanel({
       return 'Integration queue processed.';
     });
 
+  const mergeAll = () =>
+    run('merge-all', async () => {
+      const result = await apiPost<{
+        merged: string[];
+        skipped: Array<{ taskId: string; reason: string }>;
+      }>(`/api/orchestration/sessions/${session.id}/merge-all`);
+      const mergedCount = result.merged.length;
+      const skippedCount = result.skipped.length;
+      if (mergedCount === 0 && skippedCount === 0) {
+        return 'No tasks ready to merge.';
+      }
+      return `Merged ${mergedCount} task(s)${skippedCount > 0 ? `, skipped ${skippedCount}` : ''}.`;
+    });
+
   const isolate = () =>
     run('isolate', async () => {
       const result = await apiPost<{ session: SessionSummary }>(
@@ -352,6 +366,7 @@ export function TaskOrchestrationPanel({
         busyKey={busyKey}
         onSchedule={() => void schedule()}
         onProcessQueue={() => void processQueue()}
+        onMergeAll={() => void mergeAll()}
         onToggleScheduling={() => void toggleScheduling()}
         onRefresh={() => void load()}
       />
@@ -421,6 +436,7 @@ export function TaskOrchestrationPanel({
                 terminal={terminal}
                 live={live}
                 selected={selectedTaskId === task.id}
+                sessionId={session.id}
                 busyKey={busyKey}
                 completionSummary={completionSummary}
                 acknowledgeNoValidation={acknowledgeNoValidation}

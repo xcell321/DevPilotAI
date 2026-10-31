@@ -553,6 +553,32 @@ export class OrchestrationService {
     return mapTaskRow(row, state, reason, this.taskLeases(row.id));
   }
 
+  /**
+   * Sends a task's description directly to a live terminal's stdin.
+   * This is the "Send to terminal" feature — lets the user route a task
+   * to one of their already-open CLI terminals instead of the workflow
+   * spawning a new agent.
+   */
+  async sendTaskToTerminal(
+    taskId: string,
+    terminalId: string,
+  ): Promise<{ sent: boolean; terminalId: string; taskId: string }> {
+    const task = this.getTask(taskId);
+    const description = task.description?.trim();
+    if (!description) {
+      throw new ApiError(400, 'task_no_description', 'This task has no description to send.');
+    }
+    if (!this.sessions.hasLiveTerminal(terminalId)) {
+      throw new ApiError(
+        409,
+        'terminal_not_running',
+        'The selected terminal is not running. Start it first.',
+      );
+    }
+    this.sessions.sendTextToTerminal(terminalId, description + '\r');
+    return { sent: true, terminalId, taskId };
+  }
+
   private taskLeases(taskId: string): AgentTaskSummary['leases'] {
     return this.leases.activeForTask(taskId).map((lease) => ({
       path: lease.path,
@@ -1028,6 +1054,60 @@ export class OrchestrationService {
         await this.processIntegration(next);
       }
     });
+  }
+
+  /**
+   * Merges all completed tasks in a session with a single action.
+   * Finds tasks ready for integration, queues them, and processes the queue.
+   * This is the "Merge all" button — one click to integrate agents A, B, C, D.
+   */
+  async mergeAll(sessionId: string): Promise<{
+    merged: string[];
+    skipped: Array<{ taskId: string; reason: string }>;
+  }> {
+    // Find tasks in this session that are ready to merge
+    const tasks = this.db
+      .prepare(
+        `SELECT at.id AS id, at.state AS state
+         FROM agent_tasks at
+         JOIN session_terminals st ON st.task_id = at.id
+         WHERE st.session_id = ?
+           AND at.state IN ('awaiting_integration', 'completed')`,
+      )
+      .all(sessionId) as Array<{ id: string; state: string }>;
+
+    const merged: string[] = [];
+    const skipped: Array<{ taskId: string; reason: string }> = [];
+
+    for (const task of tasks) {
+      try {
+        // Skip if already queued or integrated
+        const existing = this.db
+          .prepare(
+            `SELECT 1 AS active FROM task_integrations
+             WHERE task_id = ? AND state IN ('queued', 'running', 'completed') LIMIT 1`,
+          )
+          .get(task.id);
+        if (existing) {
+          skipped.push({ taskId: task.id, reason: 'Already queued or integrated.' });
+          continue;
+        }
+        await this.enqueueIntegration(task.id, {});
+        merged.push(task.id);
+      } catch (error) {
+        skipped.push({
+          taskId: task.id,
+          reason: error instanceof Error ? error.message : 'Could not queue for integration.',
+        });
+      }
+    }
+
+    // Process the queue to actually merge them
+    if (merged.length > 0) {
+      await this.processQueue();
+    }
+
+    return { merged, skipped };
   }
 
   /** Recovers interrupted scheduler, validation and integration work after a restart. */
@@ -1556,7 +1636,9 @@ export class OrchestrationService {
         const message =
           error instanceof ApiError
             ? error.message
-            : 'The agent CLI could not be started for this task.';
+            : error instanceof Error && error.message
+              ? `The agent CLI could not be started: ${error.message}`
+              : 'The agent CLI could not be started for this task.';
         this.writeTaskState(claim.taskId, 'failed', message);
         this.leases.setHoldReason(
           claim.taskId,
@@ -2710,5 +2792,33 @@ export class OrchestrationService {
     this.db
       .prepare(`DELETE FROM agent_tasks WHERE id = ?`)
       .run(taskId);
+  }
+
+  /**
+   * Returns the git diff for a task's worktree — shows what the agent has changed.
+   * Includes both uncommitted changes and committed changes on the task branch.
+   */
+  async getTaskDiff(taskId: string): Promise<{ diff: string; worktreePath: string | null; branchName: string | null }> {
+    const task = this.getTask(taskId);
+    const worktreePath = task.worktreePath;
+    const branchName = task.branchName;
+
+    if (!worktreePath) {
+      return { diff: '', worktreePath: null, branchName };
+    }
+
+    const fs = await import('node:fs');
+    if (!fs.existsSync(worktreePath)) {
+      return { diff: '', worktreePath, branchName };
+    }
+
+    const { runGitCommand } = await import('./gitWorkspaces.js');
+    try {
+      // Get uncommitted changes + committed changes vs base
+      const diff = await runGitCommand(worktreePath, ['diff', 'HEAD', '--', '.']);
+      return { diff: diff.stdout.trim(), worktreePath, branchName };
+    } catch {
+      return { diff: '', worktreePath, branchName };
+    }
   }
 }

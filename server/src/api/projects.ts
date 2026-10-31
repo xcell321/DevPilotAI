@@ -4,6 +4,7 @@ import type { Db } from '../db/types';
 import { sendApiError } from '../errors';
 import { MAX_PATH_LENGTH, MAX_PROJECT_NAME_LENGTH } from '../limits';
 import {
+  cleanupProjectWorktrees,
   createProject,
   deleteProject,
   getProject,
@@ -37,7 +38,7 @@ const renameSchema = z
   })
   .strict();
 
-export function createProjectsRouter(db: Db): Router {
+export function createProjectsRouter(db: Db, runtimeDir: string | null = null): Router {
   const router = Router();
 
   router.get('/', async (req, res) => {
@@ -80,6 +81,15 @@ export function createProjectsRouter(db: Db): Router {
     try {
       deleteProject(db, req.params.id);
       res.status(204).end();
+    } catch (error) {
+      sendApiError(res, error);
+    }
+  });
+
+  router.delete('/:id/worktrees', async (req, res) => {
+    try {
+      const result = await cleanupProjectWorktrees(db, runtimeDir, req.params.id);
+      res.json(result);
     } catch (error) {
       sendApiError(res, error);
     }

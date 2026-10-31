@@ -84,6 +84,15 @@ export function NewSessionDialog({
     setSubmitting(false);
   }, [open]);
 
+  // Auto-select Isolated Worktrees when multiple CLIs are chosen: the backend
+  // rejects concurrent agents in Shared Folder mode (409 shared_folder_concurrent_agents),
+  // so pre-selecting isolated avoids a confusing failure at submit time.
+  useEffect(() => {
+    if (selected.length > 1) {
+      setWorkspaceMode('isolated');
+    }
+  }, [selected]);
+
   useEffect(() => {
     if (!open) return;
     let ignore = false;
@@ -166,6 +175,8 @@ export function NewSessionDialog({
     startBlockedReason = 'Select a project.';
   } else if (!workspaceMode) {
     startBlockedReason = 'Choose Shared Folder or Isolated Worktrees.';
+  } else if (workspaceMode === 'shared' && selected.length > 1) {
+    startBlockedReason = 'Shared Folder supports only one agent at a time. Switch to Isolated Worktrees for multiple CLIs.';
   } else if (selectedProject.pathStatus !== 'ok') {
     startBlockedReason =
       selectedProject.pathStatus === 'missing'
@@ -437,7 +448,9 @@ export function NewSessionDialog({
               </div>
               {workspaceMode === 'shared' ? (
                 <p className="mt-2 rounded-lg border border-line bg-warn-soft px-3 py-2 text-[11px] text-warn">
-                  Shared-folder agents are not isolated from one another's file changes. They may conflict or overwrite edits.
+                  {selected.length > 1
+                    ? 'Shared Folder does not support multiple agents working at the same time — the session will be rejected. Use Isolated Worktrees instead.'
+                    : "Shared-folder agents are not isolated from one another's file changes. They may conflict or overwrite edits."}
                 </p>
               ) : null}
             </fieldset>

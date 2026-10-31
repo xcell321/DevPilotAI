@@ -10,6 +10,8 @@ import { migration008 } from './008-orchestration';
 import { migration009 } from './009-integration-candidate-validation';
 import { migration010 } from './010-workflow-coordination';
 import { migration011 } from './011-lease-index-project-scope';
+import { migration012 } from './012-session-terminals-task-description';
+import { migration013 } from './013-default-max-concurrent-agents-8';
 
 export const migrations: Migration[] = [
   migration001,
@@ -23,4 +25,6 @@ export const migrations: Migration[] = [
   migration009,
   migration010,
   migration011,
+  migration012,
+  migration013,
 ];

@@ -1,0 +1,110 @@
+<svg width="512" height="160" viewBox="0 0 512 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Concept C: Pure Didone - High-contrast editorial serif, ligatured, no symbol -->
+  <!-- Didone: extreme contrast (1:6+), vertical stress, unbracketed hairline serifs, ball terminals -->
+  <!-- Grid: 8 units. Cap height 80, x-height 48. Baseline y=100. -->
+  <!-- Stems: 10, Hairlines: 2, Serifs: 3 -->
+
+  <!-- D: x=32..96 -->
+  <g transform="translate(64, 100)">
+    <!-- Left stem (thick) -->
+    <path d="M-20 0 V-80" stroke="black" stroke-width="10" stroke-linecap="square"/>
+    <!-- Top hairline serif -->
+    <path d="M-28 -80 H-12" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+    <!-- Bottom hairline serif -->
+    <path d="M-28 0 H-12" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+    <!-- Bowl (thick vertical, hairline horizontal) -->
+    <path d="M-10 -80 C10 -80 20 -60 20 -40 C20 -20 10 0 -10 0" stroke="black" stroke-width="10" fill="none" stroke-linecap="round"/>
+    <!-- Ball terminal at bowl baseline -->
+    <circle cx="-10" cy="0" r="5" fill="black"/>
+    <!-- Counter hairline -->
+    <path d="M-8 -40 V-20" stroke="black" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <!-- e: x=104..152 -->
+  <g transform="translate(128, 100)">
+    <!-- Crossbar (hairline) -->
+    <path d="M-18 -24 H18" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+    <!-- Bowl (high contrast) -->
+    <path d="M0 -48 C14 -48 22 -36 22 -24 C22 -12 14 0 0 0 C-14 0 -22 -12 -22 -24 C-22 -36 -14 -48 0 -48" stroke="black" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <!-- Terminal ball -->
+    <circle cx="18" cy="-24" r="3" fill="black"/>
+  </g>
+
+  <!-- v: x=152..192 -->
+  <g transform="translate(172, 100)">
+    <!-- Left diagonal (hairline) -->
+    <path d="M-16 0 L-4 -32" stroke="black" stroke-width="2" stroke-linecap="square"/>
+    <!-- Right diagonal (thick) -->
+    <path d="M4 -32 L16 0" stroke="black" stroke-width="10" stroke-linecap="square"/>
+    <!-- Bottom hairline serifs -->
+    <path d="M-19 0 H-13" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+    <path d="M13 0 H19" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+    <!-- Ball terminals on diagonal ends -->
+    <circle cx="-16" cy="0" r="4" fill="black"/>
+    <circle cx="16" cy="0" r="5" fill="black"/>
+  </g>
+
+  <!-- P: x=192..232 (ligatured with v - shared thick diagonal becomes P stem) -->
+  <g transform="translate(216, 100)">
+    <!-- Shared stem continues up (already drawn as v's right diagonal) -->
+    <path d="M4 -32 V-80" stroke="black" stroke-width="10" stroke-linecap="square"/>
+    <!-- Top hairline serif -->
+    <path d="M-4 -80 H12" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+    <!-- Bowl from shared stem -->
+    <path d="M4 -80 C18 -80 26 -64 26 -48 C26 -32 18 -20 4 -20 C4 -12 -6 -8 -10 0" stroke="black" stroke-width="10" fill="none" stroke-linecap="round"/>
+    <!-- Ball terminal -->
+    <circle cx="-10" cy="0" r="5" fill="black"/>
+  </g>
+
+  <!-- i: x=232..256 -->
+  <g transform="translate(244, 100)">
+    <!-- Stem (hairline) -->
+    <path d="M0 0 V-48" stroke="black" stroke-width="2" stroke-linecap="square"/>
+    <!-- Top serif -->
+    <path d="M-6 -48 H6" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+    <!-- Bottom serif -->
+    <path d="M-6 0 H6" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+    <!-- Dot: small ball -->
+    <circle cx="0" cy="-58" r="3" fill="black"/>
+  </g>
+
+  <!-- l: x=256..280 -->
+  <g transform="translate(268, 100)">
+    <!-- Stem (hairline) -->
+    <path d="M0 0 V-80" stroke="black" stroke-width="2" stroke-linecap="square"/>
+    <!-- Top serif -->
+    <path d="M-6 -80 H6" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+    <!-- Bottom serif -->
+    <path d="M-6 0 H6" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+    <!-- Ball terminal at top -->
+    <circle cx="0" cy="-80" r="4" fill="black"/>
+  </g>
+
+  <!-- i (second): x=280..304 -->
+  <g transform="translate(292, 100)">
+    <path d="M0 0 V-48" stroke="black" stroke-width="2" stroke-linecap="square"/>
+    <path d="M-6 -48 H6" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+    <path d="M-6 0 H6" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+    <circle cx="0" cy="-58" r="3" fill="black"/>
+  </g>
+
+  <!-- o: x=304..344 -->
+  <g transform="translate(324, 100)">
+    <path d="M0 -48 C14 -48 22 -36 22 -24 C22 -12 14 0 0 0 C-14 0 -22 -12 -22 -24 C-22 -36 -14 -48 0 -48" stroke="black" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <!-- Counter -->
+    <path d="M0 -40 C8 -40 12 -32 12 -24 C12 -16 8 -8 0 -8 C-8 -8 -12 -16 -12 -24 C-12 -32 -8 -40 0 -40" stroke="black" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.3"/>
+  </g>
+
+  <!-- t: x=344..384 (ligatured with l) -->
+  <g transform="translate(364, 100)">
+    <!-- Crossbar (hairline, slightly longer) -->
+    <path d="M-22 -72 H22" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+    <!-- Stem (hairline) -->
+    <path d="M0 -48 V0" stroke="black" stroke-width="2" stroke-linecap="square"/>
+    <!-- Top ball terminal -->
+    <circle cx="0" cy="-80" r="4" fill="black"/>
+    <!-- Bottom serif -->
+    <path d="M-6 0 H6" stroke="black" stroke-width="2" stroke-linecap="butt"/>
+  </g>
+
+</svg>

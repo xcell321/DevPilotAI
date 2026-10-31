@@ -108,6 +108,7 @@ export class WorkflowService {
     projectId: string;
     prompt: string;
     maxTasks?: number;
+    sessionId?: string;
   }): Promise<{ plan: WorkflowPlanSummary; planFingerprint: string }> {
     const prepared = await this.preparePlan(input);
     return {
@@ -121,6 +122,7 @@ export class WorkflowService {
     prompt: string;
     maxTasks?: number;
     planFingerprint: string;
+    sessionId?: string;
   }): Promise<{
     workflow: WorkflowSummary;
     session: SessionSummary;
@@ -212,6 +214,7 @@ export class WorkflowService {
     projectId: string;
     prompt: string;
     maxTasks?: number;
+    sessionId?: string;
   }): Promise<{
     project: ProjectRow;
     prompt: string;
@@ -239,7 +242,7 @@ export class WorkflowService {
       throw new ApiError(409, 'terminal_limit', 'This backend cannot create workflow terminals.');
     }
 
-    const tools = this.verifiedTools();
+    const tools = this.preferLiveTools(this.verifiedTools(), input.sessionId);
     if (tools.length === 0) {
       throw new ApiError(
         409,
@@ -290,6 +293,30 @@ export class WorkflowService {
          ORDER BY default_on_quick_start DESC, display_name`,
       )
       .all() as ToolChoice[];
+  }
+
+  /**
+   * Reorders verified tools so profiles with live terminals in the given
+   * session come first. This makes workflow plans prefer the CLIs the user
+   * already has running instead of picking an idle profile.
+   */
+  private preferLiveTools(tools: ToolChoice[], sessionId?: string): ToolChoice[] {
+    if (!sessionId) return tools;
+    let liveToolIds: Set<string>;
+    try {
+      const session = this.sessions.get(sessionId);
+      liveToolIds = new Set(
+        session.terminals
+          .filter((t) => this.sessions.hasLiveTerminal(t.id))
+          .map((t) => t.toolProfileId),
+      );
+    } catch {
+      return tools;
+    }
+    if (liveToolIds.size === 0) return tools;
+    const live = tools.filter((t) => liveToolIds.has(t.id));
+    const rest = tools.filter((t) => !liveToolIds.has(t.id));
+    return [...live, ...rest];
   }
 
   private async inspectProject(project: ProjectRow): Promise<RepositoryView> {

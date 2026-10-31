@@ -1,4 +1,7 @@
+import { useState } from 'react';
+import { apiDelete } from '../lib/api';
 import type { WorkspaceMode } from '../lib/types';
+import { ConfirmationModal } from './ConfirmationModal';
 
 type WorkspaceModeChoice = WorkspaceMode | '';
 
@@ -6,9 +9,17 @@ interface TerminalWorkspaceMetaProps {
   workspaceMode: WorkspaceMode | null;
   projectName: string;
   projectPath: string;
+  projectId: string;
   readyWorktrees: number;
   modeChoice: WorkspaceModeChoice;
   onModeChoiceChange: (choice: WorkspaceModeChoice) => void;
+  onWorktreesCleaned?: () => void;
+}
+
+interface CleanupResult {
+  removed: number;
+  failed: string[];
+  skippedInUse: string[];
 }
 
 const MODE_LABELS: Record<WorkspaceMode, string> = {
@@ -26,10 +37,34 @@ export function TerminalWorkspaceMeta({
   workspaceMode,
   projectName,
   projectPath,
+  projectId,
   readyWorktrees,
   modeChoice,
   onModeChoiceChange,
+  onWorktreesCleaned,
 }: TerminalWorkspaceMetaProps) {
+  const [cleaning, setCleaning] = useState(false);
+  const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const handleCleanup = async () => {
+    setShowConfirm(false);
+    setCleaning(true);
+    setCleanupMessage(null);
+    try {
+      const result = await apiDelete<CleanupResult>(`/api/projects/${projectId}/worktrees`);
+      const parts = [`Removed ${result.removed} worktree(s)`];
+      if (result.skippedInUse.length > 0) parts.push(`${result.skippedInUse.length} skipped (in use)`);
+      if (result.failed.length > 0) parts.push(`${result.failed.length} failed`);
+      setCleanupMessage(parts.join(' · '));
+      onWorktreesCleaned?.();
+    } catch (error) {
+      setCleanupMessage(error instanceof Error ? error.message : 'Cleanup failed');
+    } finally {
+      setCleaning(false);
+    }
+  };
+
   return (
     <div
       className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-line px-1 pb-2 text-[11px]"
@@ -49,6 +84,30 @@ export function TerminalWorkspaceMeta({
       </p>
       <div className="flex min-w-0 items-center gap-2">
         <span className="text-muted">{modeNote(workspaceMode, readyWorktrees)}</span>
+        {workspaceMode === 'isolated' && readyWorktrees > 0 ? (
+          <button
+            type="button"
+            onClick={() => setShowConfirm(true)}
+            disabled={cleaning}
+            className="rounded-md border border-line bg-panel-2 px-2 py-0.5 text-[11px] text-muted hover:border-warn hover:text-warn disabled:opacity-50"
+            title="Delete all worktrees for this project (for testing cleanup)"
+            data-testid="cleanup-worktrees"
+          >
+            {cleaning ? 'Cleaning...' : 'Clean up worktrees'}
+          </button>
+        ) : null}
+        <ConfirmationModal
+          open={showConfirm}
+          title="Clean up worktrees?"
+          message={`Delete all worktrees for "${projectName}"? This cannot be undone. Worktrees in use by running terminals will be skipped.`}
+          confirmLabel="Yes, delete"
+          danger
+          onConfirm={() => void handleCleanup()}
+          onCancel={() => setShowConfirm(false)}
+        />
+        {cleanupMessage ? (
+          <span className="text-[11px] text-muted" role="status">{cleanupMessage}</span>
+        ) : null}
         {!workspaceMode ? (
           <select
             className="input w-auto py-0.5 text-[11px]"

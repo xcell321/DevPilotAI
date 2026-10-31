@@ -7,6 +7,7 @@ import type {
 } from '../lib/types';
 import { Notice } from './Notice';
 import { StatStrip } from './StatStrip';
+import { TaskDiffButton } from './TaskDiffButton';
 
 interface WorkflowProgressDashboardProps {
   summary: SessionOrchestrationSummary;
@@ -153,6 +154,9 @@ export function WorkflowProgressDashboard({
                 {terminal?.toolName ?? task.agentName} ·{' '}
                 {failedTerminal ? 'Needs your attention' : taskStateLabel(task)}
               </p>
+              <div className="mt-1">
+                <TaskDiffButton taskId={task.id} />
+              </div>
               {task.waitKind ? (
                 <p className="mt-0.5 text-muted">
                   {task.waitKind === 'dependency'

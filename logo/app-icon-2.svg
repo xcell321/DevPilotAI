@@ -1,0 +1,8 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- App Icon 2: Charcoal needle on brass -->
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="#C6A15B"/>
+  <g transform="translate(256, 256)">
+    <polygon points="0,-144 144,0 0,144 -144,0" fill="#0F100E"/>
+    <polygon points="0,-48 48,0 0,48 -48,0" fill="#C6A15B"/>
+  </g>
+</svg>

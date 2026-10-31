@@ -109,12 +109,46 @@ export function createOrchestrationRouter(
     }
   });
 
+  router.post('/sessions/:sessionId/merge-all', async (req, res) => {
+    try {
+      const result = await service.mergeAll(req.params.sessionId);
+      res.json(result);
+    } catch (error) {
+      sendApiError(res, error);
+    }
+  });
+
   router.get('/tasks/:taskId', (req, res) => {
     try {
       res.json({
         task: service.getTask(taskIdOf(req)),
         logs: service.taskLogs(taskIdOf(req)),
       });
+    } catch (error) {
+      sendApiError(res, error);
+    }
+  });
+
+  router.get('/tasks/:taskId/diff', async (req, res) => {
+    try {
+      res.json(await service.getTaskDiff(taskIdOf(req)));
+    } catch (error) {
+      sendApiError(res, error);
+    }
+  });
+
+  router.post('/tasks/:taskId/send-to-terminal', async (req, res) => {
+    try {
+      const input = parseBody(
+        z
+          .object({
+            terminalId: idSchema,
+          })
+          .strict(),
+        req.body,
+      );
+      const result = await service.sendTaskToTerminal(taskIdOf(req), input.terminalId);
+      res.json(result);
     } catch (error) {
       sendApiError(res, error);
     }
@@ -241,6 +275,7 @@ export function createOrchestrationRouter(
             projectId: idSchema,
             prompt: z.string().trim().min(8).max(4000),
             maxTasks: z.number().int().min(1).max(4).optional(),
+            sessionId: idSchema.optional(),
           })
           .strict(),
         req.body,
@@ -267,6 +302,7 @@ export function createOrchestrationRouter(
             prompt: z.string().trim().min(8).max(4000),
             maxTasks: z.number().int().min(1).max(4).optional(),
             planFingerprint: z.string().regex(/^[a-f0-9]{64}$/i),
+            sessionId: idSchema.optional(),
           })
           .strict(),
         req.body,

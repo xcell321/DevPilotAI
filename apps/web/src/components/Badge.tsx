@@ -140,6 +140,7 @@ const TASK_STATE_LABELS: Record<AgentTaskState, string> = {
   integrated: 'Integrated',
   failed: 'Failed',
   cancelled: 'Cancelled',
+  interrupted: 'Interrupted',
 };
 
 const TASK_STATE_CLASSES: Record<AgentTaskState, string> = {
@@ -153,6 +154,7 @@ const TASK_STATE_CLASSES: Record<AgentTaskState, string> = {
   integrated: 'bg-ok-soft text-ok',
   failed: 'bg-danger-soft text-danger',
   cancelled: 'bg-hover text-muted',
+  interrupted: 'bg-hover text-muted',
 };
 
 export function TaskStateBadge({ state }: { state: AgentTaskState }) {

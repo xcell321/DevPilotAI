@@ -8,6 +8,8 @@ import type {
 } from '../lib/types';
 import { TaskStateBadge } from './Badge';
 import { Notice } from './Notice';
+import { SendToTerminalButton } from './SendToTerminalButton';
+import { CommitPushButton } from './CommitPushButton';
 
 export interface TaskLogs {
   validations: TaskValidationResult[];
@@ -26,6 +28,7 @@ interface TaskCardProps {
   terminal: SessionTerminal | null;
   live: boolean;
   selected: boolean;
+  sessionId: string;
   busyKey: string | null;
   completionSummary: string;
   acknowledgeNoValidation: boolean;
@@ -55,6 +58,7 @@ export function TaskCard({
   terminal,
   live,
   selected,
+  sessionId,
   busyKey,
   completionSummary,
   acknowledgeNoValidation,
@@ -330,6 +334,14 @@ export function TaskCard({
               <Square className="h-3.5 w-3.5" />
               Cancel task
             </button>
+            <SendToTerminalButton
+              taskId={task.id}
+              taskDescription={task.description ?? ''}
+            />
+            <CommitPushButton
+              sessionId={sessionId}
+              taskDescription={task.description ?? ''}
+            />
           </div>
 
           {editDraft?.taskId === task.id ? (

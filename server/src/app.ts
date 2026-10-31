@@ -88,7 +88,7 @@ export function createApp({
   );
   app.use('/api/terminals', requireToken(token), createTerminalsRouter(sessionService));
   app.use('/api/tools', requireToken(token), createToolsRouter(db));
-  app.use('/api/projects', requireToken(token), createProjectsRouter(db));
+  app.use('/api/projects', requireToken(token), createProjectsRouter(db, config.runtimeDir));
   app.use('/api/settings', requireToken(token), createSettingsRouter(db));
   app.use('/api/system', requireToken(token), createSystemRouter());
 

@@ -181,6 +181,40 @@ export function createSessionsRouter(service: SessionService): Router {
     }
   });
 
+  router.post('/:id/start', async (req, res) => {
+    try {
+      res.json(await service.startAllTerminals(req.params.id));
+    } catch (error) {
+      sendApiError(res, error);
+    }
+  });
+
+  router.post('/:id/commit-push', async (req, res) => {
+    try {
+      const input = parseBody(
+        z
+          .object({
+            message: z.string().trim().min(1).max(500),
+          })
+          .strict(),
+        req.body,
+      );
+      const result = await service.commitAndPush(req.params.id, input.message);
+      res.json(result);
+    } catch (error) {
+      sendApiError(res, error);
+    }
+  });
+
+  router.delete('/:id', async (req, res) => {
+    try {
+      await service.deleteSession(req.params.id);
+      res.status(204).end();
+    } catch (error) {
+      sendApiError(res, error);
+    }
+  });
+
   router.post('/:sessionId/terminals/:terminalId/stop', async (req, res) => {
     try {
       res.json({

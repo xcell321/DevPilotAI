@@ -11,7 +11,7 @@ import { TerminalSessionToolbar } from '../components/TerminalSessionToolbar';
 import { TerminalSplitView } from '../components/TerminalSplitView';
 import { TerminalStatusLine } from '../components/TerminalStatusLine';
 import { WorkflowComposer } from '../components/WorkflowComposer';
-import { apiGet, apiPost } from '../lib/api';
+import { apiDelete, apiGet, apiPost } from '../lib/api';
 import { CONVERSION_DETAILS_ANCHOR_ID, LIVE_POLL_INTERVAL_MS } from '../lib/constants';
 import { useTerminalLayoutSync } from '../hooks/useTerminalLayoutSync';
 import type { SessionSummary, TerminalLayout, ToolProfile, WorkspacePreferences } from '../lib/types';
@@ -53,6 +53,7 @@ export function TerminalsPage() {
   const [action, setAction] = useState<TerminalAction | null>(null);
   const [taskEditorTerminalId, setTaskEditorTerminalId] = useState<string | null>(null);
   const [sessionStopping, setSessionStopping] = useState(false);
+  const [sessionStarting, setSessionStarting] = useState(false);
   const [tools, setTools] = useState<ToolProfile[]>([]);
   const [terminalLimit, setTerminalLimit] = useState<number | null>(null);
   const [toolChoice, setToolChoice] = useState('');
@@ -248,6 +249,46 @@ export function TerminalsPage() {
       setActionError(error instanceof Error ? error.message : 'Could not stop the session.');
     } finally {
       setSessionStopping(false);
+    }
+  };
+
+  const startAllTerminals = async (session: SessionSummary) => {
+    setSessionStarting(true);
+    setActionError(null);
+    try {
+      const result = await apiPost<{ started: number; skipped: number; failed: Array<{ terminalId: string; error: string }> }>(
+        `/api/sessions/${session.id}/start`,
+      );
+      if (result.failed.length > 0) {
+        setActionError(`${result.started} started, ${result.failed.length} failed.`);
+      }
+      void backend.refresh();
+      await load();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not start terminals.');
+    } finally {
+      setSessionStarting(false);
+    }
+  };
+
+  const [deletingSession, setDeletingSession] = useState(false);
+  const [showAdvancedPanel, setShowAdvancedPanel] = useState(true);
+
+  const deleteSession = async (session: SessionSummary) => {
+    const confirmed = window.confirm(
+      `Permanently delete "${session.title}"? This removes the session, its terminals, tasks, and worktrees. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    setDeletingSession(true);
+    setActionError(null);
+    try {
+      await apiDelete(`/api/sessions/${session.id}`);
+      void backend.refresh();
+      await load();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not delete the session.');
+    } finally {
+      setDeletingSession(false);
     }
   };
 
@@ -527,16 +568,24 @@ export function TerminalsPage() {
   }, [selected?.id]);
 
   return (
-    <div className="flex h-full min-h-[420px] flex-col gap-3">
+    <div className="flex h-full min-h-[600px] gap-4">
+      {/* Main content */}
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
       <h2 className="font-serif text-2xl leading-tight text-ink">Terminals</h2>
 
-      <WorkflowComposer
-        onWorkflowStarted={openWorkflowSession}
-        session={selected}
-        compact={selected !== null}
-      />
+      {/* Workflow section - boxed */}
+      <div className="panel shrink-0">
+        <WorkflowComposer
+          onWorkflowStarted={openWorkflowSession}
+          session={selected}
+          compact={selected !== null}
+        />
+      </div>
 
-      <TerminalSessionToolbar
+      {/* Session section - boxed */}
+      <div className="panel shrink-0">
+        <span className="eyebrow text-muted block px-2.5 pt-2">Session</span>
+        <TerminalSessionToolbar
         sessions={sessions}
         selected={selected}
         selectedLive={selectedLive}
@@ -559,8 +608,19 @@ export function TerminalsPage() {
           if (selected) void stopSession(selected);
         }}
         stopping={sessionStopping}
+        onStartAll={() => {
+          if (selected) void startAllTerminals(selected);
+        }}
+        starting={sessionStarting}
         onNewSession={openNewSession}
+        showConvert={selected?.workspaceMode === 'shared'}
+        onOpenConversion={openConversionDetails}
+        onDeleteSession={() => {
+          if (selected) void deleteSession(selected);
+        }}
+        deleting={deletingSession}
       />
+      </div>
 
       <TerminalStatusLine
         loadError={loadError}
@@ -571,10 +631,11 @@ export function TerminalsPage() {
         workspaceMode={selected?.workspaceMode ?? null}
         projectName={selected?.project.name ?? ''}
         projectPath={selected?.project.path ?? ''}
+        projectId={selected?.project.id ?? ''}
         readyWorktrees={readyWorktrees}
         modeChoice={workspaceModeChoice}
         onModeChoiceChange={setWorkspaceModeChoice}
-        onOpenConversion={openConversionDetails}
+        onWorktreesCleaned={() => void load()}
       />
 
       {selected ? (
@@ -721,19 +782,33 @@ export function TerminalsPage() {
             )}
           </div>
 
-          <details
-            id={CONVERSION_DETAILS_ANCHOR_ID}
-            className="shrink-0 border-t border-line pt-2"
-            data-testid="task-orchestration-details"
-          >
-            <summary className="disclosure-summary">
-              Advanced Details · task history, validation, integration, and recovery
-            </summary>
-            <div className="max-h-[40vh] overflow-y-auto pt-2">
-              <TaskOrchestrationPanel session={selected} onSessionChanged={applySession} />
-            </div>
-          </details>
         </section>
+      ) : null}
+      </div>{/* End main content */}
+
+      {/* Advanced side panel */}
+      {selected ? (
+        <aside
+          className={`${showAdvancedPanel ? 'w-72' : 'w-10'} shrink-0 overflow-y-auto rounded-xl border border-line bg-panel p-3 transition-all`}
+          data-testid="advanced-side-panel"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            {showAdvancedPanel && (
+              <span className="eyebrow text-muted">⚙ Advanced</span>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowAdvancedPanel(!showAdvancedPanel)}
+              className="btn btn-ghost px-2 py-1 text-xs"
+              title={showAdvancedPanel ? 'Hide advanced panel' : 'Show advanced panel'}
+            >
+              {showAdvancedPanel ? 'Hide ›' : '‹'}
+            </button>
+          </div>
+          {showAdvancedPanel && (
+            <TaskOrchestrationPanel session={selected} onSessionChanged={applySession} />
+          )}
+        </aside>
       ) : null}
       {selected && taskEditorTerminal ? (
         <AgentTaskDialog

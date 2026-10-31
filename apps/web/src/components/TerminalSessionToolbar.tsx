@@ -1,6 +1,7 @@
-import { Loader2, Plus, RefreshCw, Square } from 'lucide-react';
+import { Loader2, Play, Plus, RefreshCw, SplitSquareHorizontal, Square, Trash2 } from 'lucide-react';
 import type { SessionSummary, SessionTerminal, ToolProfile } from '../lib/types';
 import { SessionStatusBadge } from './Badge';
+import { Tooltip } from './Tooltip';
 
 interface TerminalSessionToolbarProps {
   sessions: SessionSummary[] | null;
@@ -18,7 +19,13 @@ interface TerminalSessionToolbarProps {
   refreshing: boolean;
   onStopSession: () => void;
   stopping: boolean;
+  onStartAll: () => void;
+  starting: boolean;
   onNewSession: () => void;
+  showConvert: boolean;
+  onOpenConversion: () => void;
+  onDeleteSession: () => void;
+  deleting: boolean;
 }
 
 export function TerminalSessionToolbar({
@@ -37,16 +44,21 @@ export function TerminalSessionToolbar({
   refreshing,
   onStopSession,
   stopping,
+  onStartAll,
+  starting,
   onNewSession,
+  showConvert,
+  onOpenConversion,
+  onDeleteSession,
+  deleting,
 }: TerminalSessionToolbarProps) {
   return (
     <section
-      className="flex shrink-0 flex-col gap-2 border-b border-line pb-2 xl:flex-row xl:items-center xl:justify-between"
+      className="flex shrink-0 flex-col gap-2 px-2.5 py-2 xl:flex-row xl:items-center xl:justify-between"
       aria-label="Session and terminal controls"
       data-testid="terminal-session-toolbar"
     >
       <div className="flex min-w-0 items-center gap-2">
-        <span className="eyebrow shrink-0 text-muted">Session</span>
         {sessions && sessions.length > 0 ? (
           <select
             id="terminal-session"
@@ -96,42 +108,96 @@ export function TerminalSessionToolbar({
               ))}
             </optgroup>
           </select>
-          <span className="text-[11px] text-muted">
-            Pick a profile, then use a split arrow in a terminal header.
-          </span>
         </div>
       ) : null}
 
       <div className="flex shrink-0 items-center gap-1.5">
-        <button
-          type="button"
-          className="btn btn-icon border-transparent bg-transparent text-muted hover:bg-hover"
-          onClick={onRefresh}
-          aria-label="Refresh terminal workspace"
-          disabled={refreshing}
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-        </button>
-        {selected && selectedLive ? (
+        {showConvert ? (
+          <Tooltip content="Convert to isolated worktrees">
+            <button
+              type="button"
+              className="btn btn-icon border-transparent bg-transparent text-muted hover:bg-hover hover:text-ink"
+              onClick={onOpenConversion}
+              aria-label="Convert to isolated worktrees"
+            >
+              <SplitSquareHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
+        ) : null}
+        <Tooltip content="Refresh session">
           <button
             type="button"
-            className="btn btn-sm border-line bg-transparent text-danger hover:border-danger hover:bg-transparent"
-            onClick={onStopSession}
-            disabled={stopping || controlsDisabled}
-            data-testid="stop-session-workspace"
+            className="btn btn-icon border-transparent bg-transparent text-muted hover:bg-hover hover:text-ink"
+            onClick={onRefresh}
+            aria-label="Refresh terminal workspace"
+            disabled={refreshing}
           >
-            {stopping ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Square className="h-3.5 w-3.5" />
-            )}
-            Stop session
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
+        </Tooltip>
+        {selected && selectedLive ? (
+          <Tooltip content="Stop session">
+            <button
+              type="button"
+              className="btn btn-icon border-transparent bg-transparent text-muted hover:bg-hover hover:text-danger"
+              onClick={onStopSession}
+              disabled={stopping || controlsDisabled}
+              aria-label="Stop session"
+              data-testid="stop-session-workspace"
+            >
+              {stopping ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Square className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </Tooltip>
+        ) : selected && !selectedLive ? (
+          <Tooltip content="Start all terminals">
+            <button
+              type="button"
+              className="btn btn-icon border-transparent bg-transparent text-muted hover:bg-hover hover:text-ink"
+              onClick={onStartAll}
+              disabled={starting || controlsDisabled}
+              aria-label="Start all terminals"
+              data-testid="start-all-terminals"
+            >
+              {starting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </Tooltip>
         ) : null}
-        <button type="button" className="btn btn-brass btn-sm" onClick={onNewSession}>
-          <Plus className="h-4 w-4" />
-          New session
-        </button>
+        <Tooltip content="New session">
+          <button
+            type="button"
+            className="btn btn-brass btn-sm"
+            onClick={onNewSession}
+            aria-label="New session"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </Tooltip>
+        {selected ? (
+          <Tooltip content="Delete session">
+            <button
+              type="button"
+              className="btn btn-icon border-transparent bg-transparent text-muted hover:bg-hover hover:text-danger"
+              onClick={onDeleteSession}
+              disabled={deleting || controlsDisabled}
+              aria-label="Delete session"
+              data-testid="delete-session"
+            >
+              {deleting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </Tooltip>
+        ) : null}
       </div>
     </section>
   );

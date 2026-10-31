@@ -1,7 +1,6 @@
 import { RefreshCw } from 'lucide-react';
 import type { WorkspaceMode } from '../lib/types';
 import { Notice } from './Notice';
-import { TerminalFolderNotice } from './TerminalFolderNotice';
 import { TerminalWorkspaceMeta } from './TerminalWorkspaceMeta';
 
 interface TerminalStatusLineProps {
@@ -13,10 +12,11 @@ interface TerminalStatusLineProps {
   workspaceMode: WorkspaceMode | null;
   projectName: string;
   projectPath: string;
+  projectId: string;
   readyWorktrees: number;
   modeChoice: WorkspaceMode | '';
   onModeChoiceChange: (choice: WorkspaceMode | '') => void;
-  onOpenConversion: () => void;
+  onWorktreesCleaned?: () => void;
 }
 
 /**
@@ -32,10 +32,11 @@ export function TerminalStatusLine({
   workspaceMode,
   projectName,
   projectPath,
+  projectId,
   readyWorktrees,
   modeChoice,
   onModeChoiceChange,
-  onOpenConversion,
+  onWorktreesCleaned,
 }: TerminalStatusLineProps) {
   if (loadError) {
     return (
@@ -59,7 +60,7 @@ export function TerminalStatusLine({
   if (!showWorkspace) return null;
 
   if (workspaceMode === 'shared') {
-    return <TerminalFolderNotice onOpenConversion={onOpenConversion} />;
+    return null;
   }
 
   return (
@@ -67,9 +68,11 @@ export function TerminalStatusLine({
       workspaceMode={workspaceMode}
       projectName={projectName}
       projectPath={projectPath}
+      projectId={projectId}
       readyWorktrees={readyWorktrees}
       modeChoice={modeChoice}
       onModeChoiceChange={onModeChoiceChange}
+      onWorktreesCleaned={onWorktreesCleaned}
     />
   );
 }

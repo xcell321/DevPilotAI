@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import fs from 'node:fs';
 import path from 'node:path';
 import type {
@@ -41,7 +43,7 @@ import {
   updateToolCheck,
   type ToolProfile,
 } from './toolRegistry';
-import { verifiedProbeArgs } from './toolCatalog';
+import { getToolDefinition, verifiedProbeArgs } from './toolCatalog';
 import { normalizeAgentTaskDrafts, type AgentTaskDraft } from './agentTasks';
 import { FileLeaseService, resolveScopeEntries } from './fileLeases';
 
@@ -330,7 +332,10 @@ function getProjectLaunchRow(db: Db, projectId: string): ProjectLaunchRow {
   return row;
 }
 
-async function ensureProjectLaunchable(project: ProjectLaunchRow): Promise<string> {
+async function ensureProjectLaunchable(
+  project: ProjectLaunchRow,
+  db?: Db,
+): Promise<string> {
   let canonical: { path: string; pathKey: string };
   try {
     canonical = await validateProjectPath(project.path);
@@ -346,11 +351,23 @@ async function ensureProjectLaunchable(project: ProjectLaunchRow): Promise<strin
   }
 
   if (canonical.pathKey !== project.path_key.toLowerCase()) {
-    throw new ApiError(
-      409,
-      'project_path_changed',
-      'The project folder now resolves to a different location. Refresh the project before launching.',
-    );
+    // The folder exists and is valid, but the stored path key is stale
+    // (e.g. case differences, 8.3 short names, symlinks on Windows).
+    // Auto-refresh the stored key instead of blocking with a 409, since
+    // there is no "refresh project" button in the UI.
+    if (db) {
+      db.prepare(
+        'UPDATE projects SET path = ?, path_key = ?, updated_at = ? WHERE id = ?',
+      ).run(canonical.path, canonical.pathKey, new Date().toISOString(), project.id);
+      project.path = canonical.path;
+      project.path_key = canonical.pathKey;
+    } else {
+      throw new ApiError(
+        409,
+        'project_path_changed',
+        'The project folder now resolves to a different location. Refresh the project before launching.',
+      );
+    }
   }
   return canonical.path;
 }
@@ -675,7 +692,7 @@ export class SessionService {
   async startAgentTerminal(terminalId: string): Promise<void> {
     if (this.manager.hasLive(terminalId)) return;
     const context = await this.getTerminalContext(terminalId);
-    const projectCwd = await ensureProjectLaunchable(context.project);
+    const projectCwd = await ensureProjectLaunchable(context.project, this.db);
     const cwd = context.workspace
       ? await ensureWorkspaceLaunchable(context.workspace)
       : projectCwd;
@@ -690,9 +707,9 @@ export class SessionService {
     });
 
     const state = this.db
-      .prepare('SELECT process_status, error_code, last_error FROM session_terminals WHERE id = ?')
+      .prepare('SELECT process_status, error_code, last_error, task_description FROM session_terminals WHERE id = ?')
       .get(terminalId) as
-      | { process_status: string; error_code: string | null; last_error: string | null }
+      | { process_status: string; error_code: string | null; last_error: string | null; task_description: string | null }
       | undefined;
     if (state?.process_status === 'error') {
       throw new ApiError(
@@ -701,6 +718,124 @@ export class SessionService {
         state.last_error ?? 'The agent CLI could not be started.',
       );
     }
+
+    // Inject the task description into the CLI so the agent actually receives
+    // its assignment instead of sitting idle at the prompt.
+    // Runs in background (not awaited) so the scheduler isn't blocked.
+    const taskDescription = state?.task_description?.trim();
+    if (taskDescription) {
+      // Give the CLI time to initialize and show its prompt before sending input.
+      // Slower CLIs (Freebuff, Antigravity) need more time than Claude Code.
+      // 10s covers even the slowest CLI startup with menu screens.
+      // Background: scheduler continues immediately, injection happens later.
+      setTimeout(() => {
+        try {
+          // Send startup keys first (e.g. Enter to dismiss Freebuff's streak/menu screen),
+          // then the task text. Each with a delay so the TUI can process.
+          const toolDef = getToolDefinition(context.tool.id);
+          const startupKeys = toolDef?.startupKeys ?? [];
+          let delay = 0;
+          for (const key of startupKeys) {
+            const k = key;
+            const d = delay;
+            setTimeout(() => {
+              try { this.sendTextToTerminal(terminalId, k); } catch { /* ignore */ }
+            }, d);
+            delay += 1000;
+          }
+          setTimeout(() => {
+            try {
+              this.sendTextToTerminal(terminalId, taskDescription + '\r');
+            } catch {
+              // If injection fails, the task stays running and the user can type manually.
+            }
+          }, delay);
+        } catch {
+          // If injection fails, the task stays running and the user can type manually.
+        }
+      }, 10000);
+    }
+  }
+
+  /**
+   * Types text into a live terminal's stdin, as if the user typed it.
+   * Used for the "Send to terminal" feature and task injection.
+   * Sends text first, waits briefly, then sends Enter separately —
+   * some TUIs don't handle bulk input + Enter in a single write.
+   */
+  sendTextToTerminal(terminalId: string, text: string): void {
+    const attachment = this.manager.attach(terminalId);
+    try {
+      // Split trailing Enter from the text so the TUI can process input first
+      const enterIndex = text.search(/\r\n|\r|\n$/);
+      if (enterIndex > 0) {
+        const body = text.slice(0, enterIndex);
+        const enter = text.slice(enterIndex);
+        attachment.write(body);
+        // Small delay to let the TUI render the input before submitting
+        setTimeout(() => {
+          try {
+            const retry = this.manager.attach(terminalId);
+            try {
+              retry.write(enter);
+            } finally {
+              retry.detach();
+            }
+          } catch {
+            // Terminal may have closed; ignore
+          }
+        }, 500);
+      } else {
+        attachment.write(text);
+      }
+    } finally {
+      attachment.detach();
+    }
+  }
+
+  /**
+   * Commits all changes in the session's project and pushes to origin.
+   * Used for the "Commit & Push" button after a task succeeds.
+   */
+  async commitAndPush(
+    sessionId: string,
+    message: string,
+  ): Promise<{ committed: boolean; commitSha: string | null; pushed: boolean }> {
+    const session = this.get(sessionId);
+    const projectPath = session.project.path;
+    const execFileAsync = promisify(execFile);
+
+    // Check for changes
+    const status = await execFileAsync('git', ['status', '--porcelain'], {
+      cwd: projectPath,
+    });
+    if (!status.stdout.trim()) {
+      return { committed: false, commitSha: null, pushed: false };
+    }
+
+    // Stage all changes
+    await execFileAsync('git', ['add', '-A'], { cwd: projectPath });
+
+    // Commit
+    const commitMsg = message.trim() || 'DevPilot: task completed';
+    await execFileAsync('git', ['commit', '-m', commitMsg], { cwd: projectPath });
+
+    // Get commit SHA
+    const revParse = await execFileAsync('git', ['rev-parse', 'HEAD'], {
+      cwd: projectPath,
+    });
+    const commitSha = revParse.stdout.trim();
+
+    // Push current branch to origin
+    let pushed = false;
+    try {
+      await execFileAsync('git', ['push', 'origin', 'HEAD'], { cwd: projectPath });
+      pushed = true;
+    } catch {
+      // Push failed (no remote, no network, etc.) — commit is still done
+    }
+
+    return { committed: true, commitSha, pushed };
   }
 
   updateTask(
@@ -884,7 +1019,7 @@ export class SessionService {
 
   async create(input: CreateSessionInput): Promise<SessionSummary> {
     const project = getProjectLaunchRow(this.db, input.projectId);
-    const cwd = await ensureProjectLaunchable(project);
+    const cwd = await ensureProjectLaunchable(project, this.db);
 
     const toolIds =
       input.mode === 'quick'
@@ -1180,7 +1315,7 @@ export class SessionService {
     input: CreateOrchestratedSessionInput,
   ): Promise<SessionSummary> {
     const project = getProjectLaunchRow(this.db, input.projectId);
-    const cwd = await ensureProjectLaunchable(project);
+    const cwd = await ensureProjectLaunchable(project, this.db);
     if (input.tasks.length === 0) {
       throw new ApiError(400, 'invalid_request', 'A workflow needs at least one task.');
     }
@@ -1259,11 +1394,11 @@ export class SessionService {
           .run(sessionId, title, project.id, now, now);
         const insertTerminal = this.db.prepare(
           `INSERT INTO session_terminals
-             (id, session_id, tool_profile_id, process_status, restart_count)
-           VALUES (?, ?, ?, 'stopped', 0)`,
+             (id, session_id, tool_profile_id, process_status, restart_count, task_description)
+           VALUES (?, ?, ?, 'stopped', 0, ?)`,
         );
         for (const terminal of terminals) {
-          insertTerminal.run(terminal.id, sessionId, terminal.tool.id);
+          insertTerminal.run(terminal.id, sessionId, terminal.tool.id, terminal.draft.description);
         }
         for (const terminal of terminals) {
           insertAgentTask(
@@ -1350,7 +1485,7 @@ export class SessionService {
   ): Promise<SessionSummary> {
     const session = getSessionRow(this.db, sessionId);
     const project = getProjectLaunchRow(this.db, session.project_id);
-    const cwd = await ensureProjectLaunchable(project);
+    const cwd = await ensureProjectLaunchable(project, this.db);
     const existing = getTerminalRows(this.db, sessionId);
     if (existing.length >= this.maxTerminalsPerSession) {
       throw new ApiError(
@@ -1812,7 +1947,7 @@ export class SessionService {
     }
 
     const project = getProjectLaunchRow(this.db, session.project_id);
-    const cwd = await ensureProjectLaunchable(project);
+    const cwd = await ensureProjectLaunchable(project, this.db);
     const repository = await inspectGitRepository(cwd);
     const runtimeDir = requireWorkspaceRoot(this.runtimeDir);
     const plans = terminals.map((terminal) => ({
@@ -1895,13 +2030,13 @@ export class SessionService {
     expectedSessionId?: string,
   ): Promise<SessionSummary> {
     const context = await this.getTerminalContext(terminalId, expectedSessionId);
-    await ensureProjectLaunchable(context.project);
+    await ensureProjectLaunchable(context.project, this.db);
     if (context.workspace) await ensureWorkspaceLaunchable(context.workspace);
     await ensureToolLaunchable(context.tool.id, this.db);
 
     await this.manager.restart(terminalId, async () => {
       const current = await this.getTerminalContext(terminalId, expectedSessionId);
-      const currentProjectCwd = await ensureProjectLaunchable(current.project);
+      const currentProjectCwd = await ensureProjectLaunchable(current.project, this.db);
       const currentWorkspaceCwd = current.workspace
         ? await ensureWorkspaceLaunchable(current.workspace)
         : null;
@@ -1959,6 +2094,83 @@ export class SessionService {
 
     if (firstError) throw firstError;
     return this.get(sessionId);
+  }
+
+  /**
+   * Starts all stopped terminals in a session.
+   * Returns counts of started, skipped (already running), and failed terminals.
+   */
+  async startAllTerminals(sessionId: string): Promise<{ started: number; skipped: number; failed: Array<{ terminalId: string; error: string }> }> {
+    const session = this.get(sessionId);
+    const result = { started: 0, skipped: 0, failed: [] as Array<{ terminalId: string; error: string }> };
+
+    for (const terminal of session.terminals) {
+      if (this.manager.hasLive(terminal.id)) {
+        result.skipped++;
+        continue;
+      }
+      try {
+        await this.startAgentTerminal(terminal.id);
+        result.started++;
+      } catch (error) {
+        result.failed.push({
+          terminalId: terminal.id,
+          error: error instanceof Error ? error.message : 'Failed to start',
+        });
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Permanently deletes a session and all its terminals, tasks, and workspaces.
+   * Stops any live terminal processes first. Worktree directories are removed
+   * best-effort; failures are logged but do not fail the deletion.
+   */
+  async deleteSession(sessionId: string): Promise<void> {
+    const session = this.get(sessionId);
+
+    // Stop any live terminal processes first.
+    for (const terminal of session.terminals) {
+      if (!this.manager.hasLive(terminal.id)) continue;
+      try {
+        await this.manager.stop(terminal.id);
+      } catch (error) {
+        console.error(`Failed to stop terminal ${terminal.id} during session deletion:`, error);
+      }
+    }
+
+    // Collect worktree paths for cleanup before deleting DB rows.
+    const worktreeRows = this.db
+      .prepare(
+        `SELECT DISTINCT aw.worktree_path AS worktreePath, aw.repository_root AS repositoryRoot
+         FROM agent_workspaces aw
+         JOIN session_terminals st ON st.id = aw.terminal_id
+         WHERE st.session_id = ?
+           AND aw.worktree_path IS NOT NULL`,
+      )
+      .all(sessionId) as { worktreePath: string; repositoryRoot: string | null }[];
+
+    this.db.transaction(() => {
+      for (const terminal of session.terminals) {
+        this.db.prepare('DELETE FROM agent_workspaces WHERE terminal_id = ?').run(terminal.id);
+        this.db.prepare('DELETE FROM agent_tasks WHERE terminal_id = ?').run(terminal.id);
+        this.db.prepare('DELETE FROM session_terminals WHERE id = ?').run(terminal.id);
+      }
+      this.db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+    })();
+
+    // Remove worktree directories best-effort.
+    for (const { worktreePath, repositoryRoot } of worktreeRows) {
+      try {
+        if (repositoryRoot) {
+          await removeGitWorktree(repositoryRoot, worktreePath);
+        }
+      } catch (error) {
+        console.error(`Failed to remove worktree ${worktreePath} during session deletion:`, error);
+      }
+    }
   }
 
   private async getTerminalContext(
