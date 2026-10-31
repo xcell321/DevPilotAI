@@ -19,7 +19,7 @@
   --color-danger: #ef4444;
   --color-danger-soft: rgba(239, 68, 68, 0.12);
   --color-text: #f2ece1;
-  --color-muted: #a39c8f;
+  --color-muted: #b8b0a0;
   --color-border: rgba(242, 236, 225, 0.1);
   --color-border-strong: rgba(242, 236, 225, 0.18);
   --color-hover: rgba(242, 236, 225, 0.05);
@@ -137,7 +137,7 @@
 /* Scrollable task list in workflow dashboard */
 .task-list-scroll {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-primary) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
 }
 
 .task-list-scroll::-webkit-scrollbar {
@@ -149,13 +149,35 @@
 }
 
 .task-list-scroll::-webkit-scrollbar-thumb {
-  background: var(--color-primary);
+  background: rgba(255, 255, 255, 0.3);
   border-radius: 4px;
-  opacity: 0.6;
 }
 
 .task-list-scroll::-webkit-scrollbar-thumb:hover {
-  opacity: 1;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Focus-visible rings for keyboard navigation */
+.terminal-panel:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @media (max-width: 767px) {
