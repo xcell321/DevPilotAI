@@ -1,0 +1,35 @@
+# DevPilot AI - electron-builder config
+# Builds a Windows NSIS installer (.exe) for local-only use.
+appId: ai.devpilot.app
+productName: DevPilot AI
+copyright: Copyright © 2026 Edsiel Ursal
+
+directories:
+  output: dist-electron
+
+files:
+  - electron/**/*
+  - server/dist/**/*
+  - apps/web/dist/**/*
+  - shared/**/*
+  - package.json
+
+# node-pty is a native module: rebuild for Electron's Node version.
+# Run `npx electron-rebuild` after `npm install` on the build machine.
+asarUnpack:
+  - "**/node-pty/**/*"
+
+win:
+  target: nsis
+  # Icon: convert logo/app-icon-3.svg to .ico and set here, e.g.
+  # icon: logo/app-icon-3.ico
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: DevPilot AI
+
+# Local-only app: no auto-update server configured.
+# To enable later, add a `publish` section pointing at your release feed.
