@@ -111,7 +111,7 @@ export function WorkflowProgressDashboard({
           ]}
         />
       </div>
-      <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
+      <ul className="task-list-scroll mt-2 grid max-h-72 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2">
         {tasks.map((task) => {
           const terminal = session?.terminals.find((entry) => entry.id === task.id);
           const failedTerminal =
