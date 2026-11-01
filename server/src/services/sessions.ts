@@ -741,7 +741,7 @@ export class SessionService {
             setTimeout(() => {
               try { this.sendTextToTerminal(terminalId, k); } catch { /* ignore */ }
             }, d);
-            delay += 1000;
+            delay += 2000;
           }
           setTimeout(() => {
             try {
@@ -772,7 +772,8 @@ export class SessionService {
         const body = text.slice(0, enterIndex);
         const enter = text.slice(enterIndex);
         attachment.write(body);
-        // Small delay to let the TUI render the input before submitting
+        // Delay to let the TUI render the input before submitting.
+        // Freebuff needs longer than Claude/Copilot to process injected text.
         setTimeout(() => {
           try {
             const retry = this.manager.attach(terminalId);
@@ -784,7 +785,7 @@ export class SessionService {
           } catch {
             // Terminal may have closed; ignore
           }
-        }, 500);
+        }, 2000);
       } else {
         attachment.write(text);
       }

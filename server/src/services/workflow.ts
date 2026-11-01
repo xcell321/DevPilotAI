@@ -197,14 +197,18 @@ export class WorkflowService {
       title: plan.summary.slice(0, 120),
       tasks: overriddenTasks.map((task, index) => {
         const override = input.taskOverrides?.find((o) => o.taskIndex === index);
-        // Skills and model are injected as a hint prefix so the agent sees them.
-        const hints: string[] = [];
-        if (override?.model) hints.push(`Model: ${override.model}`);
-        if (override?.skills?.length) hints.push(`Skills: ${override.skills.join(', ')}`);
+        // Model and skills are injected as a plain-text prefix.
+        // Must be single-line with NO special characters ([ ] — etc):
+        // newlines break TUI injection, and brackets can confuse TUI input parsing.
+        const parts: string[] = [];
+        if (override?.model) parts.push(`Use model ${override.model}.`);
+        if (override?.skills?.length) {
+          parts.push(
+            `You must apply these skills: ${override.skills.join(', ')}. Follow each skill's guidelines strictly.`,
+          );
+        }
         const description =
-          hints.length > 0
-            ? `[Task config — ${hints.join(' · ')}]\n${task.description}`
-            : task.description;
+          parts.length > 0 ? `${parts.join(' ')} ${task.description}` : task.description;
         return {
           toolId: task.toolId,
           description,

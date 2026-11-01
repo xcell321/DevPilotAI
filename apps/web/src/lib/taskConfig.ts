@@ -17,7 +17,7 @@ export interface TaskOverride {
 export const DEFAULT_MODELS: Record<string, string> = {
   antigravity: 'Gemini 3.8 Flash (medium)',
   opencode: 'DeepSeek V4.1 Flash (free)',
-  freebuff: 'DeepSeek V4.1 Flash (free)',
+  freebuff: 'DeepSeek V4.1 Flash 10/17 (high)',
   'claude-code': 'FreeLLMAPI',
 };
 
@@ -25,7 +25,7 @@ export const DEFAULT_MODELS: Record<string, string> = {
 export const MODELS_BY_CLI: Record<string, string[]> = {
   antigravity: ['Gemini 3.8 Flash (medium)', 'Gemini 3.8 Flash (high)', 'Gemini 3.8 Pro'],
   opencode: ['DeepSeek V4.1 Flash (free)', 'DeepSeek V4.1 (free)'],
-  freebuff: ['DeepSeek V4.1 Flash (free)', 'DeepSeek V4.1 (free)'],
+  freebuff: ['DeepSeek V4.1 Flash 10/17 (high)', 'DeepSeek V4.1 Flash (free)'],
   'claude-code': ['FreeLLMAPI'],
   'github-copilot': ['Automatic'],
 };

@@ -55,7 +55,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       'Run freebuff in the terminal to sign in and activate your session streak.',
     notes:
       'Interactive Freebuff launch verified. Tested with node-pty (streak active, task prompt responsive).',
-    startupKeys: ['\r'],
+    startupKeys: ['\r', '\r', '\r'],
   },
   {
     id: 'copilot',
@@ -111,6 +111,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       'Run opencode auth login or configure providers in ~/.local/share/opencode/auth.json.',
     notes:
       'Interactive launch verified with original full-screen TUI. Tested with node-pty (prompt, keyboard shortcuts, commands, and resize responsive).',
+    startupKeys: ['\r'],
   },
 ];
 
