@@ -4,7 +4,6 @@ import type { AddressInfo } from 'node:net';
 import { createApp } from './app';
 import { formatHostForUrl, loadConfig, normalizeListenHost } from './config';
 import { openDatabase } from './db';
-import { errorText } from './errors';
 import { createToken } from './security/auth';
 import { OrchestrationService } from './services/orchestration';
 import { createPtyLauncher } from './services/processLauncher';
@@ -121,7 +120,9 @@ const server = app.listen(config.port, normalizeListenHost(config.host), () => {
     restrictTokenFilePermissions(config.tokenFile);
   } catch (error) {
     console.error(
-      `DevPilot could not write its runtime token file: ${errorText(error)}`,
+      `DevPilot could not write its runtime token file: ${
+        error instanceof Error ? error.message : 'unknown error'
+      }`,
     );
     shutdown(1);
     return;
@@ -152,7 +153,7 @@ const orchestrationTimer = setInterval(() => {
     .then(() => orchestrationService.processQueue())
     .catch((error: unknown) => {
       console.error(
-        `Orchestration tick failed: ${errorText(error)}`,
+        `Orchestration tick failed: ${error instanceof Error ? error.message : 'unknown error'}`,
       );
     });
 }, 5000);
@@ -195,7 +196,7 @@ function shutdown(exitCode = 0): void {
     .catch((error: unknown) => {
       clearTimeout(forceTimer);
       console.error(
-        `DevPilot shutdown failed: ${errorText(error)}`,
+        `DevPilot shutdown failed: ${error instanceof Error ? error.message : 'unknown error'}`,
       );
       process.exit(1);
     });

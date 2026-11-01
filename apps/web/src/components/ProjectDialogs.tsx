@@ -1,4 +1,3 @@
-import { errorMessage } from '../lib/errors';
 import { AlertTriangle, FolderOpen, Loader2, X } from 'lucide-react';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import limits from '../../../../shared/limits.json';
@@ -138,7 +137,7 @@ export function AddProjectDialog({ open, onClose, onCreated }: AddProjectDialogP
       const result = await apiPost<{ project: Project }>('/api/projects', body);
       onCreated(result.project);
     } catch (submitError) {
-      setError(errorMessage(submitError, 'Could not add the project.'));
+      setError(submitError instanceof Error ? submitError.message : 'Could not add the project.');
     } finally {
       setSubmitting(false);
     }
@@ -259,7 +258,7 @@ export function EditProjectDialog({ project, onClose, onSaved }: EditProjectDial
       });
       onSaved(result.project);
     } catch (saveError) {
-      setError(errorMessage(saveError, 'Could not rename the project.'));
+      setError(saveError instanceof Error ? saveError.message : 'Could not rename the project.');
     } finally {
       setSaving(false);
     }
@@ -345,7 +344,7 @@ export function DeleteProjectDialog({ project, onClose, onRemoved }: DeleteProje
       onRemoved();
     } catch (deleteError) {
       setError(
-        errorMessage(deleteError, 'Could not remove the project.'),
+        deleteError instanceof Error ? deleteError.message : 'Could not remove the project.',
       );
       setDeleting(false);
     }

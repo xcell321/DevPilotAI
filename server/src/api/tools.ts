@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Db } from '../db/types';
-import { ApiError } from '../errors';
+import { ApiError, sendApiError } from '../errors';
 import { MAX_PATH_LENGTH } from '../limits';
 import {
   getToolProfile,
@@ -44,69 +44,77 @@ export function createToolsRouter(db: Db): Router {
   });
 
   router.post('/:id/check', async (req, res) => {
-    const tool = getToolProfile(db, req.params.id);
-    if (!tool) {
-      throw new ApiError(404, 'tool_not_found', 'CLI profile not found.');
-    }
+    try {
+      const tool = getToolProfile(db, req.params.id);
+      if (!tool) {
+        throw new ApiError(404, 'tool_not_found', 'CLI profile not found.');
+      }
 
-    if (!tool.command) {
-      res.json({
-        tool,
-        check: {
-          status: 'unconfigured',
-          checkedAt: null,
-          message: 'No executable is configured. No process was started.',
-        },
-      });
-      return;
-    }
+      if (!tool.command) {
+        res.json({
+          tool,
+          check: {
+            status: 'unconfigured',
+            checkedAt: null,
+            message: 'No executable is configured. No process was started.',
+          },
+        });
+        return;
+      }
 
-    const probeArgs = verifiedProbeArgs(tool.id);
-    if (!probeArgs) {
-      const checkedAt = new Date().toISOString();
-      updateToolCheck(db, tool.id, 'unknown', checkedAt);
+      const probeArgs = verifiedProbeArgs(tool.id);
+      if (!probeArgs) {
+        const checkedAt = new Date().toISOString();
+        updateToolCheck(db, tool.id, 'unknown', checkedAt);
+        res.json({
+          tool: getToolProfile(db, tool.id),
+          check: {
+            status: 'unknown',
+            checkedAt,
+            message: 'No verified non-interactive probe is available for this profile.',
+          },
+        });
+        return;
+      }
+
+      const result = await probeExecutable(tool.command, probeArgs);
+      updateToolCheck(db, tool.id, result.status, result.checkedAt, result.output);
+
       res.json({
         tool: getToolProfile(db, tool.id),
         check: {
-          status: 'unknown',
-          checkedAt,
-          message: 'No verified non-interactive probe is available for this profile.',
+          status: result.status,
+          checkedAt: result.checkedAt,
+          output: result.output,
         },
       });
-      return;
+    } catch (error) {
+      sendApiError(res, error);
     }
-
-    const result = await probeExecutable(tool.command, probeArgs);
-    updateToolCheck(db, tool.id, result.status, result.checkedAt, result.output);
-
-    res.json({
-      tool: getToolProfile(db, tool.id),
-      check: {
-        status: result.status,
-        checkedAt: result.checkedAt,
-        output: result.output,
-      },
-    });
   });
 
   router.patch('/:id', (req, res) => {
-    const schema = z
-      .object({
-        enabled: z.boolean(),
-      })
-      .strict();
+    try {
+      const schema = z
+        .object({
+          enabled: z.boolean(),
+        })
+        .strict();
 
-    const parseResult = schema.safeParse(req.body);
-    if (!parseResult.success) {
-      throw new ApiError(
-        400,
-        'validation_error',
-        parseResult.error.issues[0]?.message ?? 'Invalid tool update payload.',
-      );
+      const parseResult = schema.safeParse(req.body);
+      if (!parseResult.success) {
+        throw new ApiError(
+          400,
+          'validation_error',
+          parseResult.error.issues[0]?.message ?? 'Invalid tool update payload.',
+        );
+      }
+
+      const updated = setToolEnabled(db, req.params.id, parseResult.data.enabled);
+      res.json({ tool: updated });
+    } catch (error) {
+      sendApiError(res, error);
     }
-
-    const updated = setToolEnabled(db, req.params.id, parseResult.data.enabled);
-    res.json({ tool: updated });
   });
 
   return router;

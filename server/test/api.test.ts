@@ -6,7 +6,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import protocol from '../../shared/protocol.cjs';
 import { createApp } from '../src/app';
-import { loadConfig, type AppConfig } from '../src/config';
+import { loadConfig } from '../src/config';
 import { openDatabase, runMigrations } from '../src/db';
 import { migration001 } from '../src/db/migrations/001-initial';
 import type { Db } from '../src/db/types';
@@ -19,14 +19,12 @@ const TOKEN = 'test-token-0123456789abcdef';
 let tempDir: string;
 let db: Db;
 let app: ReturnType<typeof createApp>;
-let config: AppConfig;
 
 beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'devpilot-api-'));
-  config = loadConfig({
+  const config = loadConfig({
     DEVPILOT_DB_PATH: path.join(tempDir, 'test.db'),
     DEVPILOT_WEB_DIST: path.join(tempDir, 'no-web-build'),
-    DEVPILOT_RATE_LIMIT_MAX: '0',
   });
   db = openDatabase(config.dbPath);
   seedToolProfiles(db);
@@ -78,30 +76,6 @@ describe('health', () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('forbidden_origin');
-  });
-});
-
-describe('rate limiting', () => {
-  it('isolates each app and enforces the configured limit', async () => {
-    const terminalSupport = {
-      status: 'available' as const,
-      detail: 'test-only check; no process spawned',
-    };
-    const limitedApp = createApp({
-      config: { ...config, rateLimitMax: 2 },
-      db,
-      token: TOKEN,
-      terminalSupport,
-    });
-
-    expect((await request(limitedApp).get('/api/health')).status).toBe(200);
-    expect((await request(limitedApp).get('/api/health')).status).toBe(200);
-
-    const limited = await request(limitedApp).get('/api/health');
-    expect(limited.status).toBe(429);
-    expect(limited.body.error.code).toBe('rate_limited');
-
-    expect((await request(app).get('/api/health')).status).toBe(200);
   });
 });
 
@@ -309,7 +283,6 @@ describe('production static build', () => {
     const config = loadConfig({
       DEVPILOT_DB_PATH: path.join(tempDir, 'test.db'),
       DEVPILOT_WEB_DIST: webDist,
-      DEVPILOT_RATE_LIMIT_MAX: '0',
     });
     const staticApp = createApp({
       config,
@@ -731,8 +704,6 @@ describe('configuration', () => {
     expect(config.port).toBe(0);
     expect(config.maxTerminals).toBe(8);
     expect(config.maxTerminalsPerSession).toBe(4);
-    expect(config.rateLimitMax).toBe(3000);
-    expect(config.rateLimitWindowMs).toBe(900000);
     expect(config.webDist).toContain(path.join('apps', 'web', 'dist'));
   });
 

@@ -1,4 +1,3 @@
-import { errorMessage } from '../lib/errors';
 import { useState } from 'react';
 import { apiDelete } from '../lib/api';
 import type { WorkspaceMode } from '../lib/types';
@@ -60,7 +59,7 @@ export function TerminalWorkspaceMeta({
       setCleanupMessage(parts.join(' · '));
       onWorktreesCleaned?.();
     } catch (error) {
-      setCleanupMessage(errorMessage(error, 'Cleanup failed'));
+      setCleanupMessage(error instanceof Error ? error.message : 'Cleanup failed');
     } finally {
       setCleaning(false);
     }

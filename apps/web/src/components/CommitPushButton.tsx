@@ -1,4 +1,3 @@
-import { errorMessage } from '../lib/errors';
 import { useState } from 'react';
 import { GitBranch } from 'lucide-react';
 import { apiPost } from '../lib/api';
@@ -40,7 +39,7 @@ export function CommitPushButton({ sessionId, taskDescription }: CommitPushButto
         setMessage(`Committed ${result.commitSha?.slice(0, 7)} (push failed - check remote).`);
       }
     } catch (cause) {
-      setMessage(errorMessage(cause, 'Commit failed.'));
+      setMessage(cause instanceof Error ? cause.message : 'Commit failed.');
     } finally {
       setSending(false);
     }

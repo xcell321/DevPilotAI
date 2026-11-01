@@ -148,7 +148,6 @@ beforeEach(() => {
     DEVPILOT_RUNTIME_DIR: path.join(tempDir, 'runtime'),
     DEVPILOT_WEB_DIST: path.join(tempDir, 'no-web-build'),
     DEVPILOT_MAX_TERMINALS: '8',
-    DEVPILOT_RATE_LIMIT_MAX: '0',
   });
   db = openDatabase(config.dbPath);
   seedToolProfiles(db);
@@ -365,7 +364,6 @@ describe('session creation contract', () => {
       DEVPILOT_RUNTIME_DIR: config.runtimeDir,
       DEVPILOT_WEB_DIST: config.webDist,
       DEVPILOT_MAX_TERMINALS_PER_SESSION: '2',
-      DEVPILOT_RATE_LIMIT_MAX: '0',
     });
 
     const limitedApp = createApp({

@@ -1,4 +1,3 @@
-import { errorMessage } from '../lib/errors';
 import { Loader2, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { apiPatch } from '../lib/api';
@@ -45,7 +44,7 @@ export function AgentTaskDialog({
       onSaved(result.session);
       onClose();
     } catch (reason) {
-      setError(errorMessage(reason, 'The task could not be saved.'));
+      setError(reason instanceof Error ? reason.message : 'The task could not be saved.');
     } finally {
       setSubmitting(false);
     }

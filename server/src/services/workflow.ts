@@ -215,9 +215,6 @@ export class WorkflowService {
     prompt: string;
     maxTasks?: number;
     sessionId?: string;
-    toolId?: string;
-    model?: string;
-    skills?: string[];
   }): Promise<{
     project: ProjectRow;
     prompt: string;
@@ -245,11 +242,7 @@ export class WorkflowService {
       throw new ApiError(409, 'terminal_limit', 'This backend cannot create workflow terminals.');
     }
 
-    let tools = this.preferLiveTools(this.verifiedTools(), input.sessionId);
-    if (input.toolId) {
-      const filtered = tools.filter((t) => t.id === input.toolId);
-      if (filtered.length > 0) tools = filtered;
-    }
+    const tools = this.preferLiveTools(this.verifiedTools(), input.sessionId);
     if (tools.length === 0) {
       throw new ApiError(
         409,
@@ -264,10 +257,10 @@ export class WorkflowService {
       MAX_GENERATED_TASKS,
       this.sessions.maxTerminalsPerSession,
     );
-    const plan = this.buildPlan(project, prompt, repository, tools, maxTasks, input.model, input.skills);
+    const plan = this.buildPlan(project, prompt, repository, tools, maxTasks);
     const planFingerprint = crypto
       .createHash('sha256')
-      .update(JSON.stringify({ projectId: project.id, prompt, plan, toolId: input.toolId, model: input.model, skills: input.skills }))
+      .update(JSON.stringify({ projectId: project.id, prompt, plan }))
       .digest('hex');
     return { project, prompt, plan, planFingerprint };
   }
@@ -409,8 +402,6 @@ export class WorkflowService {
     repository: RepositoryView,
     tools: ToolChoice[],
     maxTasks: number,
-    model?: string,
-    skills?: string[],
   ): WorkflowPlanSummary {
     const clauses = this.splitPrompt(prompt);
     const selected = clauses.slice(0, maxTasks);
@@ -474,8 +465,6 @@ export class WorkflowService {
           dependencies,
           previous.map((entry) => entry.scopes[0] ?? ''),
         ),
-        model,
-        skills,
       };
     });
 

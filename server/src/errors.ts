@@ -12,25 +12,15 @@ export class ApiError extends Error {
   }
 }
 
-export function errorText(error: unknown, fallback = 'unknown error'): string {
-  return error instanceof Error ? error.message : fallback;
-}
-
 export function sendApiError(res: Response, error: unknown): void {
   if (error instanceof ApiError) {
-    // Sanitize: never leak raw user input or request body in error messages
-    const safeMessage =
-      error.message && error.message.includes('The request body is')
-        ? 'The request body is invalid.'
-        : error.message;
     res.status(error.status).json({
-      error: { code: error.code, message: safeMessage },
+      error: { code: error.code, message: error.message },
     });
     return;
   }
 
-  console.error(`Request failed: ${errorText(error)}`);
-  // Don't leak request body or sensitive data in generic error
+  console.error(`Request failed: ${error instanceof Error ? error.message : 'unknown error'}`);
   res.status(500).json({
     error: { code: 'internal_error', message: 'Unexpected request failure.' },
   });

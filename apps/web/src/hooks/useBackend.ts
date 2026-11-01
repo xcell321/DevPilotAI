@@ -1,4 +1,3 @@
-import { errorMessage } from '../lib/errors';
 import { useCallback, useEffect, useState } from 'react';
 import { apiGet } from '../lib/api';
 import type { Health, Overview } from '../lib/types';
@@ -24,7 +23,7 @@ export function useBackend(): BackendState {
       setHealthError(null);
     } catch (error) {
       setHealth(null);
-      setHealthError(errorMessage(error, 'Backend unavailable.'));
+      setHealthError(error instanceof Error ? error.message : 'Backend unavailable.');
     }
 
     try {
@@ -33,7 +32,7 @@ export function useBackend(): BackendState {
       setOverviewError(null);
     } catch (error) {
       setOverview(null);
-      setOverviewError(errorMessage(error, 'Overview unavailable.'));
+      setOverviewError(error instanceof Error ? error.message : 'Overview unavailable.');
     }
   }, []);
 

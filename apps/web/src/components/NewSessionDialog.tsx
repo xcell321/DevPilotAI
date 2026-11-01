@@ -1,4 +1,3 @@
-import { errorMessage } from '../lib/errors';
 import { Loader2, X } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { apiGet, apiPost } from '../lib/api';
@@ -114,7 +113,7 @@ export function NewSessionDialog({
       })
       .catch((error: unknown) => {
         if (ignore) return;
-        setProjectError(errorMessage(error, 'Could not load projects.'));
+        setProjectError(error instanceof Error ? error.message : 'Could not load projects.');
       });
     return () => {
       ignore = true;
@@ -240,7 +239,7 @@ export function NewSessionDialog({
       }).catch(() => undefined);
       onCreated(result.session);
     } catch (error) {
-      setSubmitError(errorMessage(error, 'Could not start the session.'));
+      setSubmitError(error instanceof Error ? error.message : 'Could not start the session.');
     } finally {
       setSubmitting(false);
     }

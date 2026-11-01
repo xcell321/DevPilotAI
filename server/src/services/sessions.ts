@@ -14,7 +14,7 @@ import type {
   WorkspaceMode,
 } from '../../../shared/api-types.cjs';
 import type { Db } from '../db/types';
-import { ApiError, errorText } from '../errors';
+import { ApiError } from '../errors';
 import {
   DEFAULT_MAX_TERMINALS_PER_SESSION,
   MAX_SESSION_TITLE_LENGTH,
@@ -2115,7 +2115,7 @@ export class SessionService {
       } catch (error) {
         result.failed.push({
           terminalId: terminal.id,
-          error: errorText(error, 'Failed to start'),
+          error: error instanceof Error ? error.message : 'Failed to start',
         });
       }
     }

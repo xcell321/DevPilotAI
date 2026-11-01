@@ -16,7 +16,7 @@ import type {
   WorkspaceMode,
 } from '../../../shared/api-types.cjs';
 import type { Db } from '../db/types';
-import { ApiError, errorText } from '../errors';
+import { ApiError } from '../errors';
 import {
   DEFAULT_MAX_CONCURRENT_AGENTS,
   MAX_CONCURRENT_AGENTS,
@@ -1097,7 +1097,7 @@ export class OrchestrationService {
       } catch (error) {
         skipped.push({
           taskId: task.id,
-          reason: errorText(error, 'Could not queue for integration.'),
+          reason: error instanceof Error ? error.message : 'Could not queue for integration.',
         });
       }
     }
@@ -2754,14 +2754,14 @@ export class OrchestrationService {
         await removeGitWorktree(workspace.repositoryRoot, workspace.worktreePath);
       } catch (error) {
         console.error(
-          `[orchestration] Failed to remove worktree for task ${row.task_id}: ${errorText(error)}`,
+          `[orchestration] Failed to remove worktree for task ${row.task_id}: ${error instanceof Error ? error.message : 'unknown error'}`,
         );
       }
       try {
         await deleteGitBranch(workspace.repositoryRoot, workspace.branchName);
       } catch (error) {
         console.error(
-          `[orchestration] Failed to delete branch for task ${row.task_id}: ${errorText(error)}`,
+          `[orchestration] Failed to delete branch for task ${row.task_id}: ${error instanceof Error ? error.message : 'unknown error'}`,
         );
       }
 

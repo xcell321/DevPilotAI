@@ -1,11 +1,9 @@
-import { errorMessage } from '../lib/errors';
 import { ChevronDown, ChevronUp, Loader2, Play, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiGet, apiPost, apiPut } from '../lib/api';
 import { LIVE_POLL_INTERVAL_MS } from '../lib/constants';
 import { Notice } from './Notice';
-import { WorkflowPicker } from './WorkflowPicker';
 import { WorkflowPlanPreview } from './WorkflowPlanPreview';
 import { WorkflowProgressDashboard } from './WorkflowProgressDashboard';
 import type {
@@ -56,9 +54,6 @@ export function WorkflowComposer({
   const [statusError, setStatusError] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
-  const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<string | null>(null);
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
 
   useEffect(() => {
     let ignore = false;
@@ -75,7 +70,7 @@ export function WorkflowComposer({
       })
       .catch((cause: unknown) => {
         if (ignore) return;
-        setError(errorMessage(cause, 'Projects could not be loaded.'));
+        setError(cause instanceof Error ? cause.message : 'Projects could not be loaded.');
         setProjects([]);
         setTools([]);
       });
@@ -107,7 +102,7 @@ export function WorkflowComposer({
       .catch((cause: unknown) => {
         if (ignore) return;
         setSettingsError(
-          errorMessage(cause, 'Workflow settings could not be loaded.'),
+          cause instanceof Error ? cause.message : 'Workflow settings could not be loaded.',
         );
       });
     return () => {
@@ -137,7 +132,7 @@ export function WorkflowComposer({
       } catch (cause) {
         if (ignore) return;
         setStatusError(
-          errorMessage(cause, 'Workflow status could not be refreshed.'),
+          cause instanceof Error ? cause.message : 'Workflow status could not be refreshed.',
         );
       }
     };
@@ -161,9 +156,6 @@ export function WorkflowComposer({
         projectId,
         prompt,
         sessionId: session?.id,
-        toolId: selectedToolId || undefined,
-        model: selectedModel || undefined,
-        skills: selectedSkills.length > 0 ? selectedSkills : undefined,
       });
       setPreview({
         projectId,
@@ -172,7 +164,7 @@ export function WorkflowComposer({
         planFingerprint: result.planFingerprint,
       });
     } catch (cause) {
-      setError(errorMessage(cause, 'The workflow plan could not be generated.'));
+      setError(cause instanceof Error ? cause.message : 'The workflow plan could not be generated.');
       setPreview(null);
     } finally {
       setBusy(null);
@@ -193,9 +185,6 @@ export function WorkflowComposer({
         prompt: preview.prompt,
         planFingerprint: preview.planFingerprint,
         sessionId: session?.id,
-        toolId: selectedToolId || undefined,
-        model: selectedModel || undefined,
-        skills: selectedSkills.length > 0 ? selectedSkills : undefined,
       });
       setOrchestration(result.orchestration);
       setOrchestrationSessionId(result.session.id);
@@ -203,7 +192,7 @@ export function WorkflowComposer({
       setPrompt('');
       onWorkflowStarted(result.session);
     } catch (cause) {
-      setError(errorMessage(cause, 'The workflow could not be started.'));
+      setError(cause instanceof Error ? cause.message : 'The workflow could not be started.');
     } finally {
       setBusy(null);
     }
@@ -227,7 +216,7 @@ export function WorkflowComposer({
         setOrchestrationSessionId(session.id);
       }
     } catch (cause) {
-      setError(errorMessage(cause, 'The workflow could not be resumed.'));
+      setError(cause instanceof Error ? cause.message : 'The workflow could not be resumed.');
     } finally {
       setBusy(null);
     }
@@ -368,19 +357,7 @@ export function WorkflowComposer({
         </Notice>
       ) : null}
 
-  <WorkflowPicker
-    tools={tools}
-    selectedToolId={selectedToolId || ''}
-    onToolChange={setSelectedToolId}
-    selectedModel={selectedModel || ''}
-    onModelChange={setSelectedModel}
-    selectedSkills={selectedSkills}
-    onSkillsChange={setSelectedSkills}
-    busy={busy !== null}
-    disabled={tools === null || tools.length === 0}
-  />
-
-  <div
+      <div
         className={`grid gap-2 ${
           compact
             ? 'md:grid-cols-[minmax(12rem,0.8fr)_minmax(0,2fr)_auto] md:items-end'
