@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Db } from '../db/types';
-import { sendApiError } from '../errors';
 import { MAX_ID_LENGTH } from '../limits';
 import {
   getWorkspacePreferences,
@@ -30,15 +29,11 @@ export function createSettingsRouter(db: Db): Router {
   });
 
   router.patch('/workspace', (req, res) => {
-    try {
-      const input = parseBody(workspacePreferencesSchema, req.body, {
-        code: 'invalid_settings',
-        message: 'Invalid workspace preferences.',
-      });
-      res.json({ preferences: updateWorkspacePreferences(db, input) });
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    const input = parseBody(workspacePreferencesSchema, req.body, {
+      code: 'invalid_settings',
+      message: 'Invalid workspace preferences.',
+    });
+    res.json({ preferences: updateWorkspacePreferences(db, input) });
   });
 
   return router;

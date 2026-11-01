@@ -1,6 +1,10 @@
 import protocol from '../../../../shared/protocol.json';
+import { errorMessage } from './errors';
 
 const { TOKEN_HEADER, TOKEN_META_NAME } = protocol;
+const NETWORK_FALLBACK = 'Could not reach the local backend.';
+
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -21,47 +25,21 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function apiGet<T>(pathname: string, attempt = 0): Promise<T> {
-  const token = localToken();
-  const headers: Record<string, string> = { accept: 'application/json' };
-  if (token) headers[TOKEN_HEADER] = token;
-
-  let response: Response;
-  try {
-    response = await fetch(pathname, { headers });
-  } catch (error) {
-    if (attempt === 0) {
-      await sleep(350);
-      return apiGet<T>(pathname, 1);
-    }
-    throw new ApiError(
-      error instanceof Error ? error.message : 'Could not reach the local backend.',
-      0,
-    );
-  }
-
-  if (response.status === 401 && attempt === 0) {
-    await sleep(350);
-    return apiGet<T>(pathname, 1);
-  }
-
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as {
-      error?: { message?: string };
-    };
-    throw new ApiError(
-      body.error?.message ?? `Request failed with status ${response.status}.`,
-      response.status,
-    );
-  }
-
-  return (await response.json()) as T;
+async function responseError(response: Response): Promise<ApiError> {
+  const body = (await response.json().catch(() => ({}))) as {
+    error?: { message?: string };
+  };
+  return new ApiError(
+    body.error?.message ?? `Request failed with status ${response.status}.`,
+    response.status,
+  );
 }
 
-async function apiSend<T>(
-  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+async function apiRequest<T>(
+  method: HttpMethod,
   pathname: string,
   body?: unknown,
+  attempt = 0,
 ): Promise<T> {
   const token = localToken();
   const headers: Record<string, string> = { accept: 'application/json' };
@@ -76,38 +54,39 @@ async function apiSend<T>(
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch (error) {
-    throw new ApiError(
-      error instanceof Error ? error.message : 'Could not reach the local backend.',
-      0,
-    );
+    if (method === 'GET' && attempt === 0) {
+      await sleep(350);
+      return apiRequest<T>(method, pathname, body, attempt + 1);
+    }
+    throw new ApiError(errorMessage(error, NETWORK_FALLBACK), 0);
   }
 
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as {
-      error?: { message?: string };
-    };
-    throw new ApiError(
-      payload.error?.message ?? `Request failed with status ${response.status}.`,
-      response.status,
-    );
+  if (method === 'GET' && response.status === 401 && attempt === 0) {
+    await sleep(350);
+    return apiRequest<T>(method, pathname, body, attempt + 1);
   }
 
+  if (!response.ok) throw await responseError(response);
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
+export function apiGet<T>(pathname: string, attempt = 0): Promise<T> {
+  return apiRequest<T>('GET', pathname, undefined, attempt);
+}
+
 export function apiPost<T>(pathname: string, body?: unknown): Promise<T> {
-  return apiSend<T>('POST', pathname, body);
+  return apiRequest<T>('POST', pathname, body);
 }
 
 export function apiPut<T>(pathname: string, body: unknown): Promise<T> {
-  return apiSend<T>('PUT', pathname, body);
+  return apiRequest<T>('PUT', pathname, body);
 }
 
 export function apiPatch<T>(pathname: string, body: unknown): Promise<T> {
-  return apiSend<T>('PATCH', pathname, body);
+  return apiRequest<T>('PATCH', pathname, body);
 }
 
 export function apiDelete<T>(pathname: string): Promise<T> {
-  return apiSend<T>('DELETE', pathname);
+  return apiRequest<T>('DELETE', pathname);
 }

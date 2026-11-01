@@ -17,10 +17,16 @@ export function isValidToken(provided: string | null | undefined, token: string)
   return provided !== null && provided !== undefined && safeEqual(provided, token);
 }
 
+let failedAuthAttempts = 0;
+
 export function requireToken(token: string): RequestHandler {
   return (req, res, next) => {
     const provided = req.get(TOKEN_HEADER);
     if (!isValidToken(provided, token)) {
+      failedAuthAttempts++;
+      console.warn(
+        `Failed auth attempt #${failedAuthAttempts} from ${req.ip} at ${new Date().toISOString()}`,
+      );
       res.status(401).json({
         error: {
           code: 'unauthorized',
@@ -29,6 +35,7 @@ export function requireToken(token: string): RequestHandler {
       });
       return;
     }
+    failedAuthAttempts = 0; // reset on success
     next();
   };
 }

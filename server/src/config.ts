@@ -30,6 +30,8 @@ export interface AppConfig {
   schedulerTickTimeoutMs: number;
   processStopGraceMs: number;
   processForceWaitMs: number;
+  rateLimitMax: number;
+  rateLimitWindowMs: number;
 }
 
 const envSchema = z.object({
@@ -74,6 +76,18 @@ const envSchema = z.object({
     .min(500)
     .max(30000)
     .default(2000),
+  DEVPILOT_RATE_LIMIT_MAX: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(100000)
+    .default(3000),
+  DEVPILOT_RATE_LIMIT_WINDOW_MS: z.coerce
+    .number()
+    .int()
+    .min(1000)
+    .max(3600000)
+    .default(15 * 60 * 1000),
 });
 
 export const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
@@ -162,5 +176,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     schedulerTickTimeoutMs,
     processStopGraceMs,
     processForceWaitMs,
+    rateLimitMax: value.DEVPILOT_RATE_LIMIT_MAX,
+    rateLimitWindowMs: value.DEVPILOT_RATE_LIMIT_WINDOW_MS,
   };
 }

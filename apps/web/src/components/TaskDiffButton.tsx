@@ -1,3 +1,4 @@
+import { errorMessage } from '../lib/errors';
 import { useState } from 'react';
 import { X, RefreshCw } from 'lucide-react';
 import { apiGet } from '../lib/api';
@@ -25,7 +26,7 @@ export function TaskDiffButton({ taskId }: TaskDiffButtonProps) {
       const result = await apiGet<DiffResult>(`/api/orchestration/tasks/${taskId}/diff`);
       setDiff(result.diff || '(No changes yet)');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load diff');
+      setError(errorMessage(e, 'Failed to load diff'));
     } finally {
       setLoading(false);
     }

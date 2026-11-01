@@ -227,6 +227,8 @@ export interface WorkflowTaskPlan {
   declaredFileScope: string[];
   dependencies: number[];
   rationale: string;
+  model?: string;
+  skills?: string[];
 }
 
 export interface WorkflowPlanSummary {

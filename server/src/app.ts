@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import express, { type ErrorRequestHandler, type Express } from 'express';
+import rateLimit from 'express-rate-limit';
 import { TOKEN_META_NAME } from '../../shared/protocol.cjs';
 import { createHealthHandler } from './api/health';
 import { createOrchestrationRouter } from './api/orchestration';
@@ -11,8 +12,10 @@ import { createSettingsRouter } from './api/settings';
 import { createSystemRouter } from './api/system';
 import { createTerminalsRouter } from './api/terminals';
 import { createToolsRouter } from './api/tools';
+import { createSkillsRouter } from './api/skills';
 import type { AppConfig } from './config';
 import type { Db } from './db/types';
+import { ApiError, errorText, sendApiError } from './errors';
 import { requireToken } from './security/auth';
 import { apiOriginGuard } from './security/origin';
 import { createPtyLauncher } from './services/processLauncher';
@@ -21,6 +24,24 @@ import { ProcessManager } from './services/processManager';
 import { SessionService } from './services/sessions';
 import { WorkflowService } from './services/workflow';
 import type { TerminalSupport } from './terminalSupport';
+
+function createRateLimiter(config: AppConfig) {
+  return rateLimit({
+    windowMs: config.rateLimitWindowMs,
+    limit: config.rateLimitMax,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: () => config.rateLimitMax === 0,
+    handler: (_req, res) => {
+      res.status(429).json({
+        error: {
+          code: 'rate_limited',
+          message: 'Too many requests from this IP. Please wait and try again.',
+        },
+      });
+    },
+  });
+}
 
 export interface CreateAppOptions {
   config: AppConfig;
@@ -48,8 +69,12 @@ export function createApp({
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:");
     next();
   });
+
+  // Per-app limiter applied before auth so even unauthenticated paths are throttled.
+  app.use(createRateLimiter(config));
 
   app.use(apiOriginGuard);
   app.use(express.json({ limit: '64kb' }));
@@ -88,6 +113,7 @@ export function createApp({
   );
   app.use('/api/terminals', requireToken(token), createTerminalsRouter(sessionService));
   app.use('/api/tools', requireToken(token), createToolsRouter(db));
+  app.use('/api/skills', requireToken(token), createSkillsRouter(db));
   app.use('/api/projects', requireToken(token), createProjectsRouter(db, config.runtimeDir));
   app.use('/api/settings', requireToken(token), createSettingsRouter(db));
   app.use('/api/system', requireToken(token), createSystemRouter());
@@ -123,7 +149,12 @@ export function createApp({
   }
 
   const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
-    const message = error instanceof Error ? error.message : 'Unexpected request failure.';
+    if (error instanceof ApiError) {
+      sendApiError(res, error);
+      return;
+    }
+
+    const message = errorText(error, 'Unexpected request failure.');
     const status =
       typeof (error as { status?: unknown } | null)?.status === 'number'
         ? (error as { status: number }).status

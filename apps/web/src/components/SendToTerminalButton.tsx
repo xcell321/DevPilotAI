@@ -1,3 +1,4 @@
+import { errorMessage } from '../lib/errors';
 import { useEffect, useState } from 'react';
 import { Send } from 'lucide-react';
 import { apiGet, apiPost } from '../lib/api';
@@ -51,7 +52,7 @@ export function SendToTerminalButton({ taskId, taskDescription }: SendToTerminal
         setMessage('No terminals found. Open a CLI terminal first.');
       }
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : 'Could not load terminals.');
+      setMessage(errorMessage(cause, 'Could not load terminals.'));
     } finally {
       setLoading(false);
     }
@@ -73,7 +74,7 @@ export function SendToTerminalButton({ taskId, taskDescription }: SendToTerminal
       setMessage('Task sent! Check the terminal.');
       setOpen(false);
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : 'Failed to send task.');
+      setMessage(errorMessage(cause, 'Failed to send task.'));
     } finally {
       setSending(false);
     }

@@ -1,3 +1,4 @@
+import { errorMessage } from '../lib/errors';
 import { Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiGet, apiPatch, apiPost, apiPut } from '../lib/api';
@@ -100,7 +101,7 @@ export function TaskOrchestrationPanel({
     } catch (error) {
       if (requestId !== requestRef.current) return;
       setLoadError(
-        error instanceof Error ? error.message : 'Task orchestration state could not be loaded.',
+        errorMessage(error, 'Task orchestration state could not be loaded.'),
       );
     }
   }, [session.id]);
@@ -148,7 +149,7 @@ export function TaskOrchestrationPanel({
       if (selectedTaskId) await loadLogs(selectedTaskId);
     } catch (error) {
       setActionError(
-        error instanceof Error ? error.message : 'The orchestration action failed.',
+        errorMessage(error, 'The orchestration action failed.'),
       );
       await load();
     } finally {

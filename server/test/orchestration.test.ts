@@ -170,6 +170,7 @@ beforeEach(() => {
     DEVPILOT_MAX_TERMINALS: '8',
     DEVPILOT_MAX_TERMINALS_PER_SESSION: '4',
     DEVPILOT_MAX_CONCURRENT_AGENTS: '2',
+    DEVPILOT_RATE_LIMIT_MAX: '0',
   });
   db = openDatabase(config.dbPath);
   seedToolProfiles(db);

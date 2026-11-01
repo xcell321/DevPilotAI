@@ -1,9 +1,38 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { sendApiError } from '../errors';
 import { MAX_ID_LENGTH, MAX_SESSION_TITLE_LENGTH } from '../limits';
 import type { SessionService } from '../services/sessions';
 import { parseBody } from './parseBody';
+
+const taskFields = {
+  description: z.string().max(4000).optional(),
+  declaredFileScope: z
+    .array(z.string().max(512))
+    .max(100)
+    .optional(),
+  dependencies: z
+    .array(z.string().trim().min(1).max(MAX_ID_LENGTH))
+    .max(32)
+    .optional(),
+};
+
+const taskInputSchema = z.object(taskFields).strict();
+
+const createTaskInputSchema = z
+  .object({
+    toolId: z.string().trim().min(1).max(MAX_ID_LENGTH),
+    ...taskFields,
+  })
+  .strict();
+
+const updateTaskInputSchema = z
+  .object({
+    ...taskFields,
+    status: z
+      .enum(['unassigned', 'planned', 'in_progress', 'completed', 'failed', 'cancelled'])
+      .optional(),
+  })
+  .strict();
 
 function createSessionSchema(maxTerminalsPerSession: number) {
   return z
@@ -16,22 +45,7 @@ function createSessionSchema(maxTerminalsPerSession: number) {
         .max(maxTerminalsPerSession, 'Too many CLI profiles selected.')
         .optional(),
       tasks: z
-        .array(
-          z
-            .object({
-              toolId: z.string().trim().min(1).max(MAX_ID_LENGTH),
-              description: z.string().max(4000).optional(),
-              declaredFileScope: z
-                .array(z.string().max(512))
-                .max(100)
-                .optional(),
-              dependencies: z
-                .array(z.string().trim().min(1).max(MAX_ID_LENGTH))
-                .max(32)
-                .optional(),
-            })
-            .strict(),
-        )
+        .array(createTaskInputSchema)
         .max(maxTerminalsPerSession)
         .optional(),
       title: z
@@ -76,163 +90,84 @@ export function createSessionsRouter(service: SessionService): Router {
   });
 
   router.post('/', async (req, res) => {
-    try {
-      const session = await service.create(
-        parseBody(createSessionSchemaWithLimit, req.body),
-      );
-      res.status(201).json({ session });
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    const session = await service.create(
+      parseBody(createSessionSchemaWithLimit, req.body),
+    );
+    res.status(201).json({ session });
   });
 
   router.get('/:id', (req, res) => {
-    try {
-      res.json({ session: service.get(req.params.id) });
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    const session = service.get(req.params.id);
+    // Ownership check: in local-first single-user mode, any valid token holder
+    // may access sessions. For multi-user, add: if (session.userId !== req.user?.id) { ... }
+    res.json({ session });
   });
 
   router.post('/:id/open', (req, res) => {
-    try {
-      res.json({ session: service.markOpened(req.params.id) });
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    res.json({ session: service.markOpened(req.params.id) });
   });
 
   router.post('/:id/terminals', async (req, res) => {
-    try {
-      const input = parseBody(
-        z
-          .object({
-            toolId: z.string().trim().min(1).max(MAX_ID_LENGTH),
-            workspaceMode: z.enum(['shared', 'isolated']).optional(),
-            task: z
-              .object({
-                description: z.string().max(4000).optional(),
-                declaredFileScope: z
-                  .array(z.string().max(512))
-                  .max(100)
-                  .optional(),
-                dependencies: z
-                  .array(z.string().trim().min(1).max(MAX_ID_LENGTH))
-                  .max(32)
-                  .optional(),
-              })
-              .strict()
-              .optional(),
-          })
-          .strict(),
-        req.body,
-      );
-      const session = await service.addTerminal(req.params.id, input);
-      res.status(201).json({ session });
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    const input = parseBody(
+      z
+        .object({
+          toolId: z.string().trim().min(1).max(MAX_ID_LENGTH),
+          workspaceMode: z.enum(['shared', 'isolated']).optional(),
+          task: taskInputSchema.optional(),
+        })
+        .strict(),
+      req.body,
+    );
+    const session = await service.addTerminal(req.params.id, input);
+    res.status(201).json({ session });
   });
 
   router.patch('/:sessionId/terminals/:terminalId/task', (req, res) => {
-    try {
-      const input = parseBody(
-        z
-          .object({
-            description: z.string().max(4000).optional(),
-            declaredFileScope: z
-              .array(z.string().max(512))
-              .max(100)
-              .optional(),
-            dependencies: z
-              .array(z.string().trim().min(1).max(MAX_ID_LENGTH))
-              .max(32)
-              .optional(),
-            status: z
-              .enum([
-                'unassigned',
-                'planned',
-                'in_progress',
-                'completed',
-                'failed',
-                'cancelled',
-              ])
-              .optional(),
-          })
-          .strict(),
-        req.body,
-      );
-      const session = service.updateTask(
-        req.params.sessionId,
-        req.params.terminalId,
-        input,
-      );
-      res.json({ session });
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    const input = parseBody(updateTaskInputSchema, req.body);
+    const session = service.updateTask(
+      req.params.sessionId,
+      req.params.terminalId,
+      input,
+    );
+    res.json({ session });
   });
 
   router.post('/:id/stop', async (req, res) => {
-    try {
-      res.json({ session: await service.stopSession(req.params.id) });
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    res.json({ session: await service.stopSession(req.params.id) });
   });
 
   router.post('/:id/start', async (req, res) => {
-    try {
-      res.json(await service.startAllTerminals(req.params.id));
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    res.json(await service.startAllTerminals(req.params.id));
   });
 
   router.post('/:id/commit-push', async (req, res) => {
-    try {
-      const input = parseBody(
-        z
-          .object({
-            message: z.string().trim().min(1).max(500),
-          })
-          .strict(),
-        req.body,
-      );
-      const result = await service.commitAndPush(req.params.id, input.message);
-      res.json(result);
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    const input = parseBody(
+      z
+        .object({
+          message: z.string().trim().min(1).max(500),
+        })
+        .strict(),
+      req.body,
+    );
+    const result = await service.commitAndPush(req.params.id, input.message);
+    res.json(result);
   });
 
   router.delete('/:id', async (req, res) => {
-    try {
-      await service.deleteSession(req.params.id);
-      res.status(204).end();
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    await service.deleteSession(req.params.id);
+    res.status(204).end();
   });
 
   router.post('/:sessionId/terminals/:terminalId/stop', async (req, res) => {
-    try {
-      res.json({
-        session: await service.stopTerminal(req.params.terminalId, req.params.sessionId),
-      });
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    res.json({
+      session: await service.stopTerminal(req.params.terminalId, req.params.sessionId),
+    });
   });
 
   router.post('/:sessionId/terminals/:terminalId/restart', async (req, res) => {
-    try {
-      res.json({
-        session: await service.restartTerminal(req.params.terminalId, req.params.sessionId),
-      });
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    res.json({
+      session: await service.restartTerminal(req.params.terminalId, req.params.sessionId),
+    });
   });
 
   return router;

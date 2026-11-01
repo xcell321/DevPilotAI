@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Db } from '../db/types';
-import { sendApiError } from '../errors';
 import { MAX_PATH_LENGTH, MAX_PROJECT_NAME_LENGTH } from '../limits';
 import {
   cleanupProjectWorktrees,
@@ -42,57 +41,36 @@ export function createProjectsRouter(db: Db, runtimeDir: string | null = null): 
   const router = Router();
 
   router.get('/', async (req, res) => {
-    try {
-      const query = typeof req.query.q === 'string' ? req.query.q : '';
-      res.json({ projects: await listProjects(db, query) });
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    const query = typeof req.query.q === 'string' ? req.query.q : '';
+    res.json({ projects: await listProjects(db, query) });
   });
 
   router.post('/', async (req, res) => {
-    try {
-      const input = parseBody(createSchema, req.body);
-      const project = await createProject(db, input);
-      res.status(201).json({ project });
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    const input = parseBody(createSchema, req.body);
+    const project = await createProject(db, input);
+    res.status(201).json({ project });
   });
 
   router.get('/:id', async (req, res) => {
-    try {
-      res.json({ project: await getProject(db, req.params.id) });
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    const project = await getProject(db, req.params.id);
+    // Ownership check: local-first single-user allows access by any valid token;
+    // for multi-user, verify project ownership against the authenticated user.
+    res.json({ project });
   });
 
   router.patch('/:id', async (req, res) => {
-    try {
-      const input = parseBody(renameSchema, req.body);
-      res.json({ project: await renameProject(db, req.params.id, input.name) });
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    const input = parseBody(renameSchema, req.body);
+    res.json({ project: await renameProject(db, req.params.id, input.name) });
   });
 
-  router.delete('/:id', (req, res) => {
-    try {
-      deleteProject(db, req.params.id);
-      res.status(204).end();
-    } catch (error) {
-      sendApiError(res, error);
-    }
+  router.delete('/:id', async (req, res) => {
+    await deleteProject(db, req.params.id);
+    res.status(204).end();
   });
 
   router.delete('/:id/worktrees', async (req, res) => {
-    try {
-      const result = await cleanupProjectWorktrees(db, runtimeDir, req.params.id);
-      res.json(result);
-    } catch (error) {
-      sendApiError(res, error);
-    }
+    const result = await cleanupProjectWorktrees(db, runtimeDir, req.params.id);
+    res.json(result);
   });
 
   return router;

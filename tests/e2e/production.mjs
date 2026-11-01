@@ -211,14 +211,16 @@ try {
        launch_verified, last_status, last_checked_at, notes
      ) VALUES (?, ?, ?, ?, 1, 0, 1, 'available', ?, ?)`,
   );
-  for (const [id, displayName, evidence] of [
+  const testTools = [
     ['production-workflow', 'Automatic Workflow Test CLI', workflowFixtureEvidence],
     ['production-echo', 'Production Echo CLI', fixtureEvidence],
     ['production-echo-b', 'Production Echo CLI B', secondFixtureEvidence],
     ['production-echo-c', 'Production Echo CLI C', thirdFixtureEvidence],
     ['production-echo-d', 'Production Echo CLI D', fourthFixtureEvidence],
     ['production-disabled', 'Production Disabled CLI', fixtureEvidence],
-  ]) {
+  ];
+  const toolEvidence = new Map(testTools.map(([id, , evidence]) => [id, evidence]));
+  for (const [id, displayName, evidence] of testTools) {
     insertTestTool.run(
       id,
       displayName,
@@ -297,6 +299,10 @@ try {
     state: 'visible',
     timeout: 20000,
   });
+  const expandWorkflow = page.getByRole('button', { name: 'Expand workflow composer' });
+  if (await expandWorkflow.isVisible().catch(() => false)) {
+    await expandWorkflow.click();
+  }
   await page.getByTestId('workflow-project').selectOption(project.id);
   await page.getByTestId('workflow-prompt').fill('Add a project health check endpoint');
   await page.getByTestId('generate-workflow').click();
@@ -305,6 +311,12 @@ try {
   assert(
     sessionsBeforeWorkflowStart.sessions.length === 1,
     'Generating a workflow created a session before the plan was reviewed and started',
+  );
+  const evidenceBefore = new Map(
+    [...toolEvidence].map(([id, evidence]) => [
+      id,
+      fs.existsSync(evidence) ? fs.statSync(evidence).mtimeMs : 0,
+    ]),
   );
   await page.getByTestId('start-workflow').click();
   await page.waitForFunction(
@@ -327,8 +339,13 @@ try {
       isAlive(workflowSession.terminals[0].pid),
     'The workflow CLI did not receive a live isolated worktree',
   );
+  const workflowToolId = workflowSession.terminals[0].toolProfileId;
+  const workflowEvidence = toolEvidence.get(workflowToolId);
+  assert(workflowEvidence, 'The workflow did not use a seeded test CLI profile');
   await waitUntil(
-    () => fs.existsSync(workflowFixtureEvidence),
+    () =>
+      fs.existsSync(workflowEvidence) &&
+      fs.statSync(workflowEvidence).mtimeMs > (evidenceBefore.get(workflowToolId) ?? 0),
     'The workflow CLI did not write its process evidence',
   );
   const workflowProgress = await page.getByTestId('workflow-progress').textContent();
@@ -656,7 +673,7 @@ try {
     'Adding a terminal changed an existing isolated PTY process',
   );
   assert(
-    (await page.getByText('Session terminal limit reached.').count()) === 1,
+    (await page.getByText(/Limit reached/).count()) === 1,
     'The workspace did not display the authoritative terminal limit',
   );
   assert(

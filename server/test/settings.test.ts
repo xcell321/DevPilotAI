@@ -64,6 +64,7 @@ beforeEach(() => {
   config = loadConfig({
     DEVPILOT_DB_PATH: path.join(tempDir, 'test.db'),
     DEVPILOT_WEB_DIST: path.join(tempDir, 'no-web-build'),
+    DEVPILOT_RATE_LIMIT_MAX: '0',
   });
   db = openDatabase(config.dbPath);
   seedToolProfiles(db);

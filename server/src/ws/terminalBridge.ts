@@ -1,7 +1,7 @@
 import type { Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
-import { ApiError } from '../errors';
+import { ApiError, errorText } from '../errors';
 import { MAX_TERMINAL_INPUT_BYTES } from '../limits';
 import { isValidToken } from '../security/auth';
 import { isLoopbackHostHeader, isLoopbackOrigin } from '../security/origin';
@@ -383,7 +383,7 @@ export function attachTerminalBridge(options: TerminalBridgeOptions): TerminalBr
           sendJson(client, {
             type: 'error',
             code: error instanceof ApiError ? error.code : 'terminal_write_failed',
-            message: error instanceof Error ? error.message : 'Terminal input failed.',
+            message: errorText(error, 'Terminal input failed.'),
           });
         }
         return;
@@ -397,7 +397,7 @@ export function attachTerminalBridge(options: TerminalBridgeOptions): TerminalBr
           sendJson(client, {
             type: 'error',
             code: error instanceof ApiError ? error.code : 'terminal_resize_failed',
-            message: error instanceof Error ? error.message : 'Terminal resize failed.',
+            message: errorText(error, 'Terminal resize failed.'),
           });
         }
         return;
@@ -423,7 +423,7 @@ export function attachTerminalBridge(options: TerminalBridgeOptions): TerminalBr
       cleanup();
       if (!isExpectedSocketDisconnect(error)) {
         logger.error(
-          `Terminal WebSocket failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+          `Terminal WebSocket failed: ${errorText(error)}`,
         );
       }
       client.terminate();

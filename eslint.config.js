@@ -38,7 +38,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['shared/**/*.cjs'],
+    files: ['shared/**/*.cjs', 'electron/**/*.cjs'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
     },
