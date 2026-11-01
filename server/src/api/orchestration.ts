@@ -303,6 +303,19 @@ export function createOrchestrationRouter(
             maxTasks: z.number().int().min(1).max(4).optional(),
             planFingerprint: z.string().regex(/^[a-f0-9]{64}$/i),
             sessionId: idSchema.optional(),
+            taskOverrides: z
+              .array(
+                z
+                  .object({
+                    taskIndex: z.number().int().min(0),
+                    toolId: z.string().min(1).max(64).optional(),
+                    model: z.string().min(1).max(128).optional(),
+                    skills: z.array(z.string().min(1).max(64)).max(20).optional(),
+                  })
+                  .strict(),
+              )
+              .max(4)
+              .optional(),
           })
           .strict(),
         req.body,

@@ -229,6 +229,13 @@ export interface WorkflowTaskPlan {
   rationale: string;
 }
 
+export interface WorkflowTaskOverride {
+  taskIndex: number;
+  toolId?: string;
+  model?: string;
+  skills?: string[];
+}
+
 export interface WorkflowPlanSummary {
   summary: string;
   conventions: string[];

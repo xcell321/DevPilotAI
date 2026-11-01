@@ -123,6 +123,12 @@ export class WorkflowService {
     maxTasks?: number;
     planFingerprint: string;
     sessionId?: string;
+    taskOverrides?: Array<{
+      taskIndex: number;
+      toolId?: string;
+      model?: string;
+      skills?: string[];
+    }>;
   }): Promise<{
     workflow: WorkflowSummary;
     session: SessionSummary;
@@ -153,6 +159,12 @@ export class WorkflowService {
     prompt: string;
     maxTasks?: number;
     planFingerprint: string;
+    taskOverrides?: Array<{
+      taskIndex: number;
+      toolId?: string;
+      model?: string;
+      skills?: string[];
+    }>;
   }): Promise<{
     workflow: WorkflowSummary;
     session: SessionSummary;
@@ -168,15 +180,38 @@ export class WorkflowService {
       );
     }
 
+    // Apply the user's per-task overrides (CLI / model / skills) on top of
+    // the fingerprint-verified plan. Overrides are intentional user choices,
+    // not external drift, so they apply after the fingerprint check.
+    const overriddenTasks = plan.tasks.map((task, index) => {
+      const override = input.taskOverrides?.find((o) => o.taskIndex === index);
+      if (!override) return task;
+      return {
+        ...task,
+        ...(override.toolId ? { toolId: override.toolId } : {}),
+      };
+    });
+
     const session = await this.sessions.createOrchestratedSession({
       projectId: project.id,
       title: plan.summary.slice(0, 120),
-      tasks: plan.tasks.map((task) => ({
-        toolId: task.toolId,
-        description: task.description,
-        declaredFileScope: task.declaredFileScope,
-        dependencies: task.dependencies,
-      })),
+      tasks: overriddenTasks.map((task, index) => {
+        const override = input.taskOverrides?.find((o) => o.taskIndex === index);
+        // Skills and model are injected as a hint prefix so the agent sees them.
+        const hints: string[] = [];
+        if (override?.model) hints.push(`Model: ${override.model}`);
+        if (override?.skills?.length) hints.push(`Skills: ${override.skills.join(', ')}`);
+        const description =
+          hints.length > 0
+            ? `[Task config — ${hints.join(' · ')}]\n${task.description}`
+            : task.description;
+        return {
+          toolId: task.toolId,
+          description,
+          declaredFileScope: task.declaredFileScope,
+          dependencies: task.dependencies,
+        };
+      }),
     });
 
     const now = new Date().toISOString();

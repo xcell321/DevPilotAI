@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiGet, apiPost, apiPut } from '../lib/api';
 import { LIVE_POLL_INTERVAL_MS } from '../lib/constants';
+import type { TaskOverride } from '../lib/taskConfig';
 import { Notice } from './Notice';
 import { WorkflowPlanPreview } from './WorkflowPlanPreview';
 import { WorkflowProgressDashboard } from './WorkflowProgressDashboard';
@@ -47,6 +48,7 @@ export function WorkflowComposer({
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [prompt, setPrompt] = useState('');
   const [preview, setPreview] = useState<WorkflowPreview | null>(null);
+  const [taskOverrides, setTaskOverrides] = useState<Record<number, TaskOverride>>({});
   const [orchestration, setOrchestration] = useState<SessionOrchestrationSummary | null>(null);
   const [orchestrationSessionId, setOrchestrationSessionId] = useState<string | null>(null);
   const [busy, setBusy] = useState<'preview' | 'start' | 'resume' | null>(null);
@@ -163,6 +165,7 @@ export function WorkflowComposer({
         plan: result.plan,
         planFingerprint: result.planFingerprint,
       });
+      setTaskOverrides({});
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The workflow plan could not be generated.');
       setPreview(null);
@@ -171,11 +174,23 @@ export function WorkflowComposer({
     }
   };
 
+  const handleOverrideChange = (taskIndex: number, override: TaskOverride) => {
+    setTaskOverrides((current) => ({ ...current, [taskIndex]: override }));
+  };
+
   const startWorkflow = async () => {
     if (!preview || preview.projectId !== projectId) return;
     setBusy('start');
     setError(null);
     try {
+      // Only send overrides that actually change something.
+      const overrides = Object.entries(taskOverrides)
+        .filter(([, override]) =>
+          override.toolId !== undefined ||
+          override.model !== undefined ||
+          (override.skills?.length ?? 0) > 0,
+        )
+        .map(([index, override]) => ({ taskIndex: Number(index), ...override }));
       const result = await apiPost<{
         workflow: WorkflowSummary;
         session: SessionSummary;
@@ -185,6 +200,7 @@ export function WorkflowComposer({
         prompt: preview.prompt,
         planFingerprint: preview.planFingerprint,
         sessionId: session?.id,
+        ...(overrides.length > 0 ? { taskOverrides: overrides } : {}),
       });
       setOrchestration(result.orchestration);
       setOrchestrationSessionId(result.session.id);
@@ -450,6 +466,9 @@ export function WorkflowComposer({
           startDisabled={
             workflowPaused || !previewToolsReady || settings === null || Boolean(settingsError)
           }
+          tools={tools ?? []}
+          overrides={taskOverrides}
+          onOverrideChange={handleOverrideChange}
           onRegenerate={() => void generatePlan()}
           onStart={() => void startWorkflow()}
         />

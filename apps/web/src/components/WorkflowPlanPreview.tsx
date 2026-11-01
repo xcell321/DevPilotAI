@@ -1,12 +1,17 @@
 import { Loader2, Play } from 'lucide-react';
 import { briefText } from '../lib/format';
-import type { WorkflowPlanSummary } from '../lib/types';
+import type { TaskOverride } from '../lib/taskConfig';
+import type { ToolProfile, WorkflowPlanSummary } from '../lib/types';
+import { TaskConfigPicker } from './TaskConfigPicker';
 
 interface WorkflowPlanPreviewProps {
   plan: WorkflowPlanSummary;
   projectName: string | null;
   busy: 'preview' | 'start' | 'resume' | null;
   startDisabled: boolean;
+  tools: ToolProfile[];
+  overrides: Record<number, TaskOverride>;
+  onOverrideChange: (taskIndex: number, override: TaskOverride) => void;
   onRegenerate: () => void;
   onStart: () => void;
 }
@@ -16,6 +21,9 @@ export function WorkflowPlanPreview({
   projectName,
   busy,
   startDisabled,
+  tools,
+  overrides,
+  onOverrideChange,
   onRegenerate,
   onStart,
 }: WorkflowPlanPreviewProps) {
@@ -47,6 +55,13 @@ export function WorkflowPlanPreview({
               </p>
               <p className="mt-1 text-muted">{task.rationale}</p>
             </details>
+            <TaskConfigPicker
+              assignedToolId={task.toolId}
+              tools={tools}
+              value={overrides[index] ?? {}}
+              onChange={(override) => onOverrideChange(index, override)}
+              disabled={busy !== null}
+            />
           </li>
         ))}
       </ol>
