@@ -86,6 +86,7 @@ const runtimeFile = runtimeFileFor(root);
 fs.rmSync(runtimeFile, { force: true });
 
 const server = startNpm(['run', 'dev', '-w', 'server'], {
+  NODE_ENV: 'development',
   DEVPILOT_PORT: String(serverPort),
   DEVPILOT_RUNTIME_DIR: runtimeDir,
 });

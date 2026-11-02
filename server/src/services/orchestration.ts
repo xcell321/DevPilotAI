@@ -568,6 +568,29 @@ export class OrchestrationService {
     if (!description) {
       throw new ApiError(400, 'task_no_description', 'This task has no description to send.');
     }
+
+    // Deny by default: the terminal must belong to the same session as the
+    // task, otherwise a task could be injected into another project's CLI.
+    const taskRow = this.db
+      .prepare('SELECT session_id FROM agent_tasks WHERE id = ?')
+      .get(taskId) as { session_id: string } | undefined;
+    if (!taskRow) {
+      throw new ApiError(404, 'task_not_found', 'Task not found.');
+    }
+    const terminalRow = this.db
+      .prepare('SELECT session_id FROM session_terminals WHERE id = ?')
+      .get(terminalId) as { session_id: string } | undefined;
+    if (!terminalRow) {
+      throw new ApiError(404, 'terminal_not_found', 'Terminal not found.');
+    }
+    if (terminalRow.session_id !== taskRow.session_id) {
+      throw new ApiError(
+        403,
+        'terminal_scope_mismatch',
+        'The terminal belongs to a different session than this task.',
+      );
+    }
+
     if (!this.sessions.hasLiveTerminal(terminalId)) {
       throw new ApiError(
         409,

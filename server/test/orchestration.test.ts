@@ -1876,3 +1876,54 @@ describe('scheduler watchdog', () => {
     await stopSession(session.id);
   }, 30_000);
 });
+
+describe('send to terminal access control', () => {
+  it('rejects injecting a task into a terminal from another session', async () => {
+    addProfile('send-agent-a', 5_000);
+    addProfile('send-agent-b', 5_000);
+    const projectA = await makeProject('Send Target A');
+    const projectB = await makeProject('Send Target B');
+
+    const sessionA = await createSession(projectA.id, ['send-agent-a'], [
+      { description: 'Task for session A' },
+    ]);
+    const sessionB = await createSession(projectB.id, ['send-agent-b'], [
+      { description: 'Task for session B' },
+    ]);
+    const terminalA = sessionA.terminals[0]!;
+    const terminalB = sessionB.terminals[0]!;
+
+    for (const sessionId of [sessionA.id, sessionB.id]) {
+      const started = await authorized('post', `/api/sessions/${sessionId}/start`);
+      expect(started.status, JSON.stringify(started.body)).toBe(200);
+      expect(started.body.failed).toEqual([]);
+    }
+
+    const allRunning = async (sessionId: string): Promise<boolean> => {
+      const response = await authorized('get', `/api/sessions/${sessionId}`);
+      return response.body.session.terminals.every(
+        (terminal: { status: string }) => terminal.status === 'running',
+      );
+    };
+    await waitUntil(
+      async () => (await allRunning(sessionA.id)) && (await allRunning(sessionB.id)),
+      'Terminals did not reach running',
+    );
+
+    const own = await authorized(
+      'post',
+      `/api/orchestration/tasks/${terminalA.id}/send-to-terminal`,
+    ).send({ terminalId: terminalA.id });
+    expect(own.status, JSON.stringify(own.body)).toBe(200);
+
+    const cross = await authorized(
+      'post',
+      `/api/orchestration/tasks/${terminalA.id}/send-to-terminal`,
+    ).send({ terminalId: terminalB.id });
+    expect(cross.status).toBe(403);
+    expect(cross.body.error.code).toBe('terminal_scope_mismatch');
+
+    await stopSession(sessionA.id);
+    await stopSession(sessionB.id);
+  }, 30_000);
+});

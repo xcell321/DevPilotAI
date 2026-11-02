@@ -22,6 +22,35 @@ import { SessionService } from './services/sessions';
 import { WorkflowService } from './services/workflow';
 import type { TerminalSupport } from './terminalSupport';
 
+const isDevelopment = process.env.NODE_ENV === 'development';
+
+const PRODUCTION_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self' ws://127.0.0.1:* ws://localhost:* ws://[::1]:*",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
+// Vite's dev server injects scripts and styles inline and uses the HMR socket.
+const DEVELOPMENT_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "font-src 'self' data:",
+  "connect-src 'self' ws: wss: http://127.0.0.1:* http://localhost:* http://[::1]:*",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
 export interface CreateAppOptions {
   config: AppConfig;
   db: Db;
@@ -48,11 +77,19 @@ export function createApp({
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader(
+      'Content-Security-Policy',
+      isDevelopment ? DEVELOPMENT_CSP : PRODUCTION_CSP,
+    );
     next();
   });
 
   app.use(apiOriginGuard);
   app.use(express.json({ limit: '64kb' }));
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
 
   const manager =
     processManager ??
