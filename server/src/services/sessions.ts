@@ -647,6 +647,11 @@ function requireWorkspaceRoot(runtimeDir: string | null): string {
   return runtimeDir;
 }
 
+// Stagger counter for parallel task injection. When multiple agent terminals
+// launch at once, each gets a different injection delay so they don't all
+// fire simultaneously while the system is still busy starting TUIs.
+let injectionStaggerCounter = 0;
+
 export class SessionService {
   constructor(
     private readonly db: Db,
@@ -724,9 +729,15 @@ export class SessionService {
     // Runs in background (not awaited) so the scheduler isn't blocked.
     const taskDescription = state?.task_description?.trim();
     if (taskDescription) {
-      // Give the CLI time to initialize and show its prompt before sending input.
-      // Slower CLIs (Freebuff, Antigravity) need more time than Claude Code.
-      // 10s covers even the slowest CLI startup with menu screens.
+      // Stagger injections when terminals launch in parallel: each terminal
+      // waits 10s + (slot * 4s) so the system isn't hit by 4 simultaneous
+      // injections while still busy starting TUIs. 1-by-1 runs are unaffected
+      // (slot 0 = 10s, same as before).
+      // Freebuff gets +8s extra: it has the slowest TUI (3 startup screens +
+      // ads) and needs more time under parallel load.
+      const staggerSlot = injectionStaggerCounter++ % 8;
+      const toolExtraDelay = context.tool.id === 'freebuff' ? 8000 : 0;
+      const injectionDelay = 10000 + staggerSlot * 4000 + toolExtraDelay;
       // Background: scheduler continues immediately, injection happens later.
       setTimeout(() => {
         try {
@@ -753,7 +764,7 @@ export class SessionService {
         } catch {
           // If injection fails, the task stays running and the user can type manually.
         }
-      }, 10000);
+      }, injectionDelay);
     }
   }
 

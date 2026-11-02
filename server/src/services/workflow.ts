@@ -269,7 +269,7 @@ export class WorkflowService {
         `Describe the workflow in ${MIN_PROMPT_LENGTH}-${MAX_PROMPT_LENGTH} characters so tasks can be planned.`,
       );
     }
-    const requestedTasks = input.maxTasks ?? 3;
+    const requestedTasks = input.maxTasks ?? 4;
     if (!Number.isInteger(requestedTasks) || requestedTasks < 1 || requestedTasks > MAX_GENERATED_TASKS) {
       throw new ApiError(
         400,
