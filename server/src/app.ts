@@ -24,32 +24,38 @@ import type { TerminalSupport } from './terminalSupport';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 
-const PRODUCTION_CSP = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "font-src 'self'",
-  "connect-src 'self' ws://127.0.0.1:* ws://localhost:* ws://[::1]:*",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-].join('; ');
+function buildCspConnectSrc(config: AppConfig, dev: boolean): string {
+  const host = config.host;
+  const formattedHost = host.includes(':') ? `[${host}]` : host;
+  const wsScheme = dev ? 'ws:' : 'ws://';
+  const httpScheme = dev ? 'http:' : 'http://';
+  const base = `'self' ${wsScheme}//${formattedHost}:* ${wsScheme}//localhost:* ${wsScheme}//[::1]:*`;
+  if (dev) {
+    return `'self' ${wsScheme}: wss: ${httpScheme}//${formattedHost}:* ${httpScheme}//localhost:* ${httpScheme}//[::1]:*`;
+  }
+  return base;
+}
 
-// Vite's dev server injects scripts and styles inline and uses the HMR socket.
-const DEVELOPMENT_CSP = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "font-src 'self' data:",
-  "connect-src 'self' ws: wss: http://127.0.0.1:* http://localhost:* http://[::1]:*",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-].join('; ');
+function getCsp(config: AppConfig, dev: boolean): string {
+  const connectSrc = buildCspConnectSrc(config, dev);
+  const base = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self'",
+    `connect-src ${connectSrc}`,
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ];
+  if (dev) {
+    base[1] = "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
+    base[3] = "font-src 'self' data:";
+  }
+  return base.join('; ');
+}
 
 export interface CreateAppOptions {
   config: AppConfig;
@@ -77,10 +83,7 @@ export function createApp({
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader(
-      'Content-Security-Policy',
-      isDevelopment ? DEVELOPMENT_CSP : PRODUCTION_CSP,
-    );
+    res.setHeader('Content-Security-Policy', getCsp(config, isDevelopment));
     next();
   });
 

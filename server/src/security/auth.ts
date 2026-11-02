@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { RequestHandler } from 'express';
 import { TOKEN_HEADER } from '../../../shared/protocol.cjs';
+import { logAuthRejection } from './auditLog';
 
 export function createToken(): string {
   return crypto.randomBytes(32).toString('hex');
@@ -21,6 +22,11 @@ export function requireToken(token: string): RequestHandler {
   return (req, res, next) => {
     const provided = req.get(TOKEN_HEADER);
     if (!isValidToken(provided, token)) {
+      logAuthRejection(provided ? 'invalid_token' : 'missing_token', {
+        method: req.method,
+        path: req.path,
+        remoteAddress: req.socket.remoteAddress,
+      });
       res.status(401).json({
         error: {
           code: 'unauthorized',

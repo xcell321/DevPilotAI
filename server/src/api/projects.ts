@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Db } from '../db/types';
-import { sendApiError } from '../errors';
+import { ApiError, sendApiError } from '../errors';
 import { MAX_PATH_LENGTH, MAX_PROJECT_NAME_LENGTH } from '../limits';
 import {
   cleanupProjectWorktrees,
@@ -11,7 +11,10 @@ import {
   listProjects,
   renameProject,
 } from '../services/projects';
+import { idSchema } from './idSchema';
 import { parseBody } from './parseBody';
+
+const MAX_PROJECT_QUERY_LENGTH = 128;
 
 const createSchema = z
   .object({
@@ -44,6 +47,9 @@ export function createProjectsRouter(db: Db, runtimeDir: string | null = null): 
   router.get('/', async (req, res) => {
     try {
       const query = typeof req.query.q === 'string' ? req.query.q : '';
+      if (query.length > MAX_PROJECT_QUERY_LENGTH) {
+        throw new ApiError(400, 'invalid_query', 'The search query is too long.');
+      }
       res.json({ projects: await listProjects(db, query) });
     } catch (error) {
       sendApiError(res, error);
@@ -62,7 +68,8 @@ export function createProjectsRouter(db: Db, runtimeDir: string | null = null): 
 
   router.get('/:id', async (req, res) => {
     try {
-      res.json({ project: await getProject(db, req.params.id) });
+      const id = parseBody(idSchema, req.params.id);
+      res.json({ project: await getProject(db, id) });
     } catch (error) {
       sendApiError(res, error);
     }
@@ -70,8 +77,9 @@ export function createProjectsRouter(db: Db, runtimeDir: string | null = null): 
 
   router.patch('/:id', async (req, res) => {
     try {
+      const id = parseBody(idSchema, req.params.id);
       const input = parseBody(renameSchema, req.body);
-      res.json({ project: await renameProject(db, req.params.id, input.name) });
+      res.json({ project: await renameProject(db, id, input.name) });
     } catch (error) {
       sendApiError(res, error);
     }
@@ -79,7 +87,8 @@ export function createProjectsRouter(db: Db, runtimeDir: string | null = null): 
 
   router.delete('/:id', (req, res) => {
     try {
-      deleteProject(db, req.params.id);
+      const id = parseBody(idSchema, req.params.id);
+      deleteProject(db, id);
       res.status(204).end();
     } catch (error) {
       sendApiError(res, error);
@@ -88,7 +97,8 @@ export function createProjectsRouter(db: Db, runtimeDir: string | null = null): 
 
   router.delete('/:id/worktrees', async (req, res) => {
     try {
-      const result = await cleanupProjectWorktrees(db, runtimeDir, req.params.id);
+      const id = parseBody(idSchema, req.params.id);
+      const result = await cleanupProjectWorktrees(db, runtimeDir, id);
       res.json(result);
     } catch (error) {
       sendApiError(res, error);

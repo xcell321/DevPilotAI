@@ -1,13 +1,11 @@
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { ApiError, sendApiError } from '../errors';
-import { MAX_ID_LENGTH } from '../limits';
 import type { OrchestrationService } from '../services/orchestration';
 import type { SessionService } from '../services/sessions';
 import type { WorkflowService } from '../services/workflow';
+import { idSchema } from './idSchema';
 import { parseBody } from './parseBody';
-
-const idSchema = z.string().trim().min(1).max(MAX_ID_LENGTH);
 
 function taskIdOf(req: Request): string {
   return parseBody(idSchema, req.params.taskId);

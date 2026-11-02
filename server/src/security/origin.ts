@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express';
 import { isLoopbackHost } from '../config';
+import { logAuthRejection } from './auditLog';
 
 export function isLoopbackOrigin(origin: string | undefined): boolean {
   if (!origin) return true;
@@ -22,6 +23,11 @@ export function isLoopbackHostHeader(host: string | undefined): boolean {
 
 export const apiOriginGuard: RequestHandler = (req, res, next) => {
   if (!isLoopbackHostHeader(req.headers.host)) {
+    logAuthRejection('forbidden_host', {
+      method: req.method,
+      path: req.path,
+      remoteAddress: req.socket.remoteAddress,
+    });
     res.status(403).json({
       error: { code: 'forbidden_host', message: 'Only loopback hosts are allowed.' },
     });
@@ -29,6 +35,11 @@ export const apiOriginGuard: RequestHandler = (req, res, next) => {
   }
 
   if (!isLoopbackOrigin(req.headers.origin)) {
+    logAuthRejection('forbidden_origin', {
+      method: req.method,
+      path: req.path,
+      remoteAddress: req.socket.remoteAddress,
+    });
     res.status(403).json({
       error: { code: 'forbidden_origin', message: 'Only loopback origins are allowed.' },
     });

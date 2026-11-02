@@ -4,6 +4,7 @@ import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { ApiError } from '../errors';
 import { MAX_TERMINAL_INPUT_BYTES } from '../limits';
 import { isValidToken } from '../security/auth';
+import { formatAuthRejection } from '../security/auditLog';
 import { isLoopbackHostHeader, isLoopbackOrigin } from '../security/origin';
 import type { ProcessManager, TerminalAttachment } from '../services/processManager';
 import type { SessionService, SessionSummary } from '../services/sessions';
@@ -190,16 +191,27 @@ export function attachTerminalBridge(options: TerminalBridgeOptions): TerminalBr
     socket: Duplex,
     head: Buffer,
   ): void => {
+    const rejectAuth = (reason: string, status: number, message: string): void => {
+      logger.error(
+        formatAuthRejection(reason, {
+          method: request.method,
+          path: request.url?.split('?')[0],
+          remoteAddress: request.socket.remoteAddress,
+        }),
+      );
+      rejectUpgrade(socket, status, message);
+    };
+
     if (closed || request.method !== 'GET') {
       rejectUpgrade(socket, 400, 'Invalid terminal upgrade request.');
       return;
     }
     if (!isLoopbackHostHeader(request.headers.host)) {
-      rejectUpgrade(socket, 403, 'Only loopback hosts are allowed.');
+      rejectAuth('forbidden_host', 403, 'Only loopback hosts are allowed.');
       return;
     }
     if (!isLoopbackOrigin(request.headers.origin)) {
-      rejectUpgrade(socket, 403, 'Only loopback origins are allowed.');
+      rejectAuth('forbidden_origin', 403, 'Only loopback origins are allowed.');
       return;
     }
 
@@ -211,7 +223,7 @@ export function attachTerminalBridge(options: TerminalBridgeOptions): TerminalBr
       return;
     }
     if (!tokenFromProtocols(request, token)) {
-      rejectUpgrade(socket, 401, 'A valid local session token is required.');
+      rejectAuth('token_rejected', 401, 'A valid local session token is required.');
       return;
     }
 

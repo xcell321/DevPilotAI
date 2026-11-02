@@ -1,13 +1,16 @@
 import { Router } from 'express';
 import { sendApiError } from '../errors';
 import type { SessionService } from '../services/sessions';
+import { idSchema } from './idSchema';
+import { parseBody } from './parseBody';
 
 export function createTerminalsRouter(service: SessionService): Router {
   const router = Router();
 
   router.post('/:id/stop', async (req, res) => {
     try {
-      res.json({ session: await service.stopTerminal(req.params.id) });
+      const id = parseBody(idSchema, req.params.id);
+      res.json({ session: await service.stopTerminal(id) });
     } catch (error) {
       sendApiError(res, error);
     }
@@ -15,7 +18,8 @@ export function createTerminalsRouter(service: SessionService): Router {
 
   router.post('/:id/restart', async (req, res) => {
     try {
-      res.json({ session: await service.restartTerminal(req.params.id) });
+      const id = parseBody(idSchema, req.params.id);
+      res.json({ session: await service.restartTerminal(id) });
     } catch (error) {
       sendApiError(res, error);
     }

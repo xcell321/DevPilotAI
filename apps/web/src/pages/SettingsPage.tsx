@@ -50,7 +50,7 @@ export function SettingsPage() {
           <h2 className="text-sm font-semibold text-ink">Local security</h2>
         </div>
         <ul className="space-y-3 px-4 py-4 text-sm text-muted">
-          <li>The backend binds to 127.0.0.1 by default and accepts loopback hosts only.</li>
+          <li>The backend binds to {health?.backend.host ?? '127.0.0.1'} and accepts loopback hosts only.</li>
           <li>API requests require a random local token except the minimal health route.</li>
           <li>There is no endpoint that executes a client-supplied command string.</li>
           <li>CLI profiles are allowlisted records; no secrets are stored in the database.</li>

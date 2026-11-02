@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { sendApiError } from '../errors';
 import { MAX_ID_LENGTH, MAX_SESSION_TITLE_LENGTH } from '../limits';
 import type { SessionService } from '../services/sessions';
+import { idSchema } from './idSchema';
 import { parseBody } from './parseBody';
 
 function createSessionSchema(maxTerminalsPerSession: number) {
@@ -88,7 +89,8 @@ export function createSessionsRouter(service: SessionService): Router {
 
   router.get('/:id', (req, res) => {
     try {
-      res.json({ session: service.get(req.params.id) });
+      const id = parseBody(idSchema, req.params.id);
+      res.json({ session: service.get(id) });
     } catch (error) {
       sendApiError(res, error);
     }
@@ -96,7 +98,8 @@ export function createSessionsRouter(service: SessionService): Router {
 
   router.post('/:id/open', (req, res) => {
     try {
-      res.json({ session: service.markOpened(req.params.id) });
+      const id = parseBody(idSchema, req.params.id);
+      res.json({ session: service.markOpened(id) });
     } catch (error) {
       sendApiError(res, error);
     }
@@ -104,6 +107,7 @@ export function createSessionsRouter(service: SessionService): Router {
 
   router.post('/:id/terminals', async (req, res) => {
     try {
+      const sessionId = parseBody(idSchema, req.params.id);
       const input = parseBody(
         z
           .object({
@@ -127,7 +131,7 @@ export function createSessionsRouter(service: SessionService): Router {
           .strict(),
         req.body,
       );
-      const session = await service.addTerminal(req.params.id, input);
+      const session = await service.addTerminal(sessionId, input);
       res.status(201).json({ session });
     } catch (error) {
       sendApiError(res, error);
@@ -136,6 +140,8 @@ export function createSessionsRouter(service: SessionService): Router {
 
   router.patch('/:sessionId/terminals/:terminalId/task', (req, res) => {
     try {
+      const sessionId = parseBody(idSchema, req.params.sessionId);
+      const terminalId = parseBody(idSchema, req.params.terminalId);
       const input = parseBody(
         z
           .object({
@@ -163,8 +169,8 @@ export function createSessionsRouter(service: SessionService): Router {
         req.body,
       );
       const session = service.updateTask(
-        req.params.sessionId,
-        req.params.terminalId,
+        sessionId,
+        terminalId,
         input,
       );
       res.json({ session });
@@ -175,7 +181,8 @@ export function createSessionsRouter(service: SessionService): Router {
 
   router.post('/:id/stop', async (req, res) => {
     try {
-      res.json({ session: await service.stopSession(req.params.id) });
+      const id = parseBody(idSchema, req.params.id);
+      res.json({ session: await service.stopSession(id) });
     } catch (error) {
       sendApiError(res, error);
     }
@@ -183,7 +190,8 @@ export function createSessionsRouter(service: SessionService): Router {
 
   router.post('/:id/start', async (req, res) => {
     try {
-      res.json(await service.startAllTerminals(req.params.id));
+      const id = parseBody(idSchema, req.params.id);
+      res.json(await service.startAllTerminals(id));
     } catch (error) {
       sendApiError(res, error);
     }
@@ -191,6 +199,7 @@ export function createSessionsRouter(service: SessionService): Router {
 
   router.post('/:id/commit-push', async (req, res) => {
     try {
+      const id = parseBody(idSchema, req.params.id);
       const input = parseBody(
         z
           .object({
@@ -199,7 +208,7 @@ export function createSessionsRouter(service: SessionService): Router {
           .strict(),
         req.body,
       );
-      const result = await service.commitAndPush(req.params.id, input.message);
+      const result = await service.commitAndPush(id, input.message);
       res.json(result);
     } catch (error) {
       sendApiError(res, error);
@@ -208,7 +217,8 @@ export function createSessionsRouter(service: SessionService): Router {
 
   router.delete('/:id', async (req, res) => {
     try {
-      await service.deleteSession(req.params.id);
+      const id = parseBody(idSchema, req.params.id);
+      await service.deleteSession(id);
       res.status(204).end();
     } catch (error) {
       sendApiError(res, error);
@@ -217,8 +227,10 @@ export function createSessionsRouter(service: SessionService): Router {
 
   router.post('/:sessionId/terminals/:terminalId/stop', async (req, res) => {
     try {
+      const sessionId = parseBody(idSchema, req.params.sessionId);
+      const terminalId = parseBody(idSchema, req.params.terminalId);
       res.json({
-        session: await service.stopTerminal(req.params.terminalId, req.params.sessionId),
+        session: await service.stopTerminal(terminalId, sessionId),
       });
     } catch (error) {
       sendApiError(res, error);
@@ -227,8 +239,10 @@ export function createSessionsRouter(service: SessionService): Router {
 
   router.post('/:sessionId/terminals/:terminalId/restart', async (req, res) => {
     try {
+      const sessionId = parseBody(idSchema, req.params.sessionId);
+      const terminalId = parseBody(idSchema, req.params.terminalId);
       res.json({
-        session: await service.restartTerminal(req.params.terminalId, req.params.sessionId),
+        session: await service.restartTerminal(terminalId, sessionId),
       });
     } catch (error) {
       sendApiError(res, error);

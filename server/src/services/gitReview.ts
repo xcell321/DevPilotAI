@@ -23,11 +23,16 @@ export interface MergeCheck {
   conflicts: string[];
 }
 
+const GIT_AUTHOR_NAME = process.env.DEVPILOT_GIT_AUTHOR_NAME ?? 'DevPilot AI';
+const GIT_AUTHOR_EMAIL = process.env.DEVPILOT_GIT_AUTHOR_EMAIL ?? 'devpilot@localhost';
+const GIT_COMMITTER_NAME = process.env.DEVPILOT_GIT_COMMITTER_NAME ?? 'DevPilot AI';
+const GIT_COMMITTER_EMAIL = process.env.DEVPILOT_GIT_COMMITTER_EMAIL ?? 'devpilot@localhost';
+
 const GIT_ENV: NodeJS.ProcessEnv = {
-  GIT_AUTHOR_NAME: 'DevPilot AI',
-  GIT_AUTHOR_EMAIL: 'devpilot@localhost',
-  GIT_COMMITTER_NAME: 'DevPilot AI',
-  GIT_COMMITTER_EMAIL: 'devpilot@localhost',
+  GIT_AUTHOR_NAME,
+  GIT_AUTHOR_EMAIL,
+  GIT_COMMITTER_NAME,
+  GIT_COMMITTER_EMAIL,
   GIT_TERMINAL_PROMPT: '0',
 };
 

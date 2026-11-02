@@ -69,6 +69,26 @@ const VALIDATION_WORKTREES_DIRECTORY = 'validation-worktrees';
 const MAX_COMPLETION_SUMMARY_LENGTH = 4000;
 const MAX_ACTUAL_FILES = 500;
 
+/**
+ * Strips dangerous ANSI control sequences and terminal escape codes
+ * that could manipulate the receiving terminal prompt or state.
+ */
+function sanitizeTerminalText(input: string): string {
+  // Strip CSI (Control Sequence Introducer) sequences: ESC [ ... final
+  // Matches ESC [ <params> <intermediates> <final>
+  let output = input.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+  // Strip OSC (Operating System Command) sequences: ESC ] ... ST or ESC ] ... BEL
+  output = output.replace(/\x1b\][^\x07\x1b]*[\x07\x1b]/g, '');
+  // Strip other common escape sequences: ESC #, ESC (, ESC ), ESC P, ESC X, etc.
+  output = output.replace(/\x1b[#\(\)PX\^_@]/g, '');
+  // Strip raw ESC sequences that might be CSI/OSC without proper termination
+  output = output.replace(/\x1b\[[^\x1b]*$/g, '');
+  output = output.replace(/\x1b\][^\x1b]*$/g, '');
+  // Strip null bytes and other control chars except newline, tab, carriage return
+  output = output.replace(/[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f]/g, '');
+  return output;
+}
+
 interface TaskRow {
   id: string;
   session_id: string;
@@ -569,6 +589,9 @@ export class OrchestrationService {
       throw new ApiError(400, 'task_no_description', 'This task has no description to send.');
     }
 
+    // Sanitize description to prevent ANSI/terminal control sequence injection.
+    const sanitized = sanitizeTerminalText(description);
+
     // Deny by default: the terminal must belong to the same session as the
     // task, otherwise a task could be injected into another project's CLI.
     const taskRow = this.db
@@ -598,7 +621,7 @@ export class OrchestrationService {
         'The selected terminal is not running. Start it first.',
       );
     }
-    this.sessions.sendTextToTerminal(terminalId, description + '\r');
+    this.sessions.sendTextToTerminal(terminalId, sanitized + '\r');
     return { sent: true, terminalId, taskId };
   }
 

@@ -54,7 +54,7 @@ export default defineConfig(({ command }) => {
     customLogger: command === 'serve' ? createDevLogger() : undefined,
     plugins: [react(), devTokenPlugin()],
     server: {
-      host: '127.0.0.1',
+      host: process.env.DEVPILOT_WEB_HOST ?? '127.0.0.1',
       port: configuredWebPort ?? 5173,
       strictPort: configuredWebPort !== undefined,
       proxy: serverOrigin

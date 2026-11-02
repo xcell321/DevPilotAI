@@ -11,6 +11,8 @@ import {
 } from '../services/toolRegistry';
 import { probeExecutable } from '../services/toolProbe';
 import { verifiedProbeArgs } from '../services/toolCatalog';
+import { idSchema } from './idSchema';
+import { parseBody } from './parseBody';
 
 const MAX_TOOL_DISPLAY_NAME_LENGTH = 80;
 const MAX_ARG_LENGTH = 512;
@@ -45,7 +47,8 @@ export function createToolsRouter(db: Db): Router {
 
   router.post('/:id/check', async (req, res) => {
     try {
-      const tool = getToolProfile(db, req.params.id);
+      const toolId = parseBody(idSchema, req.params.id);
+      const tool = getToolProfile(db, toolId);
       if (!tool) {
         throw new ApiError(404, 'tool_not_found', 'CLI profile not found.');
       }
@@ -95,6 +98,7 @@ export function createToolsRouter(db: Db): Router {
 
   router.patch('/:id', (req, res) => {
     try {
+      const toolId = parseBody(idSchema, req.params.id);
       const schema = z
         .object({
           enabled: z.boolean(),
@@ -110,7 +114,7 @@ export function createToolsRouter(db: Db): Router {
         );
       }
 
-      const updated = setToolEnabled(db, req.params.id, parseResult.data.enabled);
+      const updated = setToolEnabled(db, toolId, parseResult.data.enabled);
       res.json({ tool: updated });
     } catch (error) {
       sendApiError(res, error);

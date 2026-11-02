@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Send } from 'lucide-react';
 import { apiGet, apiPost } from '../lib/api';
 import type { SessionSummary, SessionTerminal } from '../lib/types';
@@ -6,6 +6,7 @@ import type { SessionSummary, SessionTerminal } from '../lib/types';
 interface SendToTerminalButtonProps {
   taskId: string;
   taskDescription: string;
+  sessionId: string;
 }
 
 interface LiveTerminalOption {
@@ -14,41 +15,37 @@ interface LiveTerminalOption {
   sessionName: string;
 }
 
-export function SendToTerminalButton({ taskId, taskDescription }: SendToTerminalButtonProps) {
+const SEND_DEBOUNCE_MS = 300;
+
+export function SendToTerminalButton({
+  taskId,
+  taskDescription,
+  sessionId,
+}: SendToTerminalButtonProps) {
   const [open, setOpen] = useState(false);
   const [terminals, setTerminals] = useState<LiveTerminalOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const lastSendRef = useRef<number>(0);
 
   const loadTerminals = async () => {
     setLoading(true);
     setMessage(null);
     try {
-      const result = await apiGet<{ sessions: SessionSummary[] }>('/api/sessions');
-      const options: LiveTerminalOption[] = [];
-      for (const session of result.sessions) {
-        // Fetch full session to get terminals with live status
-        try {
-          const detail = await apiGet<{ session: SessionSummary }>(
-            `/api/sessions/${session.id}`,
-          );
-          for (const t of detail.session.terminals ?? []) {
-            const terminal = t as SessionTerminal & { live?: boolean };
-            // Only include terminals that appear live (we check via hasLive on backend at send time)
-            options.push({
-              terminalId: terminal.id,
-              label: `${terminal.toolName ?? 'Terminal'} (${terminal.id.slice(0, 8)})`,
-              sessionName: detail.session.title ?? session.id.slice(0, 8),
-            });
-          }
-        } catch {
-          // Skip sessions we can't read
-        }
-      }
+      const detail = await apiGet<{ session: SessionSummary }>(
+        `/api/sessions/${encodeURIComponent(sessionId)}`,
+      );
+      const options: LiveTerminalOption[] = (detail.session.terminals ?? []).map(
+        (terminal: SessionTerminal) => ({
+          terminalId: terminal.id,
+          label: `${terminal.toolName ?? 'Terminal'} (${terminal.id.slice(0, 8)})`,
+          sessionName: detail.session.title ?? sessionId.slice(0, 8),
+        }),
+      );
       setTerminals(options);
       if (options.length === 0) {
-        setMessage('No terminals found. Open a CLI terminal first.');
+        setMessage('No terminals found in this session. Open a CLI terminal first.');
       }
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : 'Could not load terminals.');
@@ -61,9 +58,15 @@ export function SendToTerminalButton({ taskId, taskDescription }: SendToTerminal
     if (open) {
       void loadTerminals();
     }
-  }, [open ]);
+  }, [open, sessionId]);
 
   const sendTo = async (terminalId: string) => {
+    const now = Date.now();
+    if (now - lastSendRef.current < SEND_DEBOUNCE_MS) {
+      return;
+    }
+    lastSendRef.current = now;
+
     setSending(true);
     setMessage(null);
     try {

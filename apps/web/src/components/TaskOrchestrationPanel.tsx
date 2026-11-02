@@ -255,7 +255,15 @@ export function TaskOrchestrationPanel({
       if (mergedCount === 0 && skippedCount === 0) {
         return 'No tasks ready to merge.';
       }
-      return `Merged ${mergedCount} task(s)${skippedCount > 0 ? `, skipped ${skippedCount}` : ''}.`;
+      const parts = [`Merged ${mergedCount} task(s)`];
+      if (skippedCount > 0) {
+        parts.push(`skipped ${skippedCount}`);
+        const reasons = result.skipped
+          .map((s) => `${s.taskId.slice(0, 8)}: ${s.reason}`)
+          .join('; ');
+        parts.push(`Reasons: ${reasons}`);
+      }
+      return parts.join('. ');
     });
 
   const isolate = () =>
@@ -447,14 +455,16 @@ export function TaskOrchestrationPanel({
                 onCompletionSummaryChange={setCompletionSummary}
                 onAcknowledgeNoValidationChange={setAcknowledgeNoValidation}
                 onAllowOutOfScopeChange={setAllowOutOfScope}
-                onComplete={() => void completeTask(task)}
-                onValidate={() => void validateTask(task)}
-                onIntegrate={() => void integrateTask(task)}
-                onRetry={() => void retryTask(task)}
-                onReplan={() => void replanTask(task)}
-                onStartEdit={() => startEdit(task)}
-                onCancelValidation={() => void cancelValidation(task)}
-                onCancel={() => void cancelTask(task)}
+                actions={{
+                  onComplete: () => void completeTask(task),
+                  onValidate: () => void validateTask(task),
+                  onIntegrate: () => void integrateTask(task),
+                  onRetry: () => void retryTask(task),
+                  onReplan: () => void replanTask(task),
+                  onStartEdit: () => startEdit(task),
+                  onCancelValidation: () => void cancelValidation(task),
+                  onCancel: () => void cancelTask(task),
+                }}
                 onSaveAssignment={() => void saveAssignment(task)}
                 onEditDraftChange={setEditDraft}
                 onEditCancel={() => setEditDraft(null)}
