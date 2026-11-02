@@ -36,6 +36,20 @@
   color-scheme: dark;
 }
 
+/* Motion tokens for consistent timing */
+:root {
+  --dp-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dp-ease-in: cubic-bezier(0.55, 0.06, 0.68, 0.19);
+  --dp-duration-hover: 180ms;
+  --dp-duration-press: 100ms;
+  --dp-duration-entrance: 300ms;
+  --dp-duration-exit: 200ms;
+  --dp-duration-panel: 350ms;
+  --dp-duration-counter: 500ms;
+  --dp-stagger-delay: 40ms;
+  --dp-stagger-max: 400ms;
+}
+
 @layer base {
   html,
   body,
@@ -170,57 +184,278 @@ a:focus-visible,
   outline-offset: 1px;
 }
 
-/* ------------------------------------------------------------------
- * Motion system — subtle, premium animations for the editorial-dark theme.
+/* ============================================================
+ * Motion system — DevPilotAI branded animations.
+ * Brass/gold terminal aesthetic. Developer-tool personality.
  * All animations respect prefers-reduced-motion (see below).
- * ------------------------------------------------------------------ */
+ * ============================================================ */
 
-@keyframes dp-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* Core easings — terminal feel: quick settle, no bounce */
+:root {
+  --dp-ease-out: cubic-bezier(0.16, 1, 0.3, 1);       /* fast settle */
+  --dp-ease-in:  cubic-bezier(0.6, 0.04, 0.98, 0.34);  /* sharp exit */
+  --dp-ease-snap: cubic-bezier(0.25, 0.46, 0.45, 0.94); /* terminal snap */
+  --dp-duration-hover: 120ms;
+  --dp-duration-press: 70ms;
+  --dp-duration-entrance: 280ms;
+  --dp-duration-exit: 180ms;
+  --dp-duration-panel: 320ms;
+  --dp-duration-counter: 420ms;
+  --dp-stagger-delay: 30ms;
+  --dp-stagger-max: 350ms;
 }
 
-@keyframes dp-slide-up {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+/* ---- Branded keyframes ---- */
+
+/* Terminal "boot" — scan line sweep + fade */
+@keyframes dp-boot {
+  0%   { opacity: 0; clip-path: inset(100% 0 0 0); }
+  60%  { clip-path: inset(0 0 0 0); }
+  100% { opacity: 1; clip-path: inset(0 0 0 0); }
 }
 
-@keyframes dp-scale-in {
-  from { opacity: 0; transform: scale(0.97); }
-  to { opacity: 1; transform: scale(1); }
+/* Brass underline draw — for active nav, focus rings */
+@keyframes dp-brass-draw {
+  from { width: 0; opacity: 0; }
+  to   { width: 100%; opacity: 1; }
 }
 
-@keyframes dp-pulse-soft {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
+/* Counter "tick" — mechanical counter feel */
+@keyframes dp-tick {
+  0%   { transform: translateY(0) scale(1); opacity: 1; }
+  35%  { transform: translateY(-4px) scale(1.12); opacity: 0.85; }
+  70%  { transform: translateY(1px) scale(0.98); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 
-@keyframes dp-shimmer {
-  from { background-position: -200% 0; }
-  to { background-position: 200% 0; }
+/* Terminal cursor blink — repurposed for focus */
+@keyframes dp-cursor-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
 }
 
-@keyframes dp-status-pop {
-  0% { transform: scale(0.85); opacity: 0; }
-  60% { transform: scale(1.04); }
-  100% { transform: scale(1); opacity: 1; }
+/* Brass shimmer sweep — loading, not generic shimmer */
+@keyframes dp-brass-sweep {
+  0%   { background-position: -120% 0; opacity: 0.4; }
+  50%  { opacity: 1; }
+  100% { background-position: 120% 0; opacity: 0.4; }
 }
+
+/* Panel "slide into rails" — horizontal settle */
+@keyframes dp-rail-in {
+  from { opacity: 0; transform: translateX(-12px) scaleX(0.96); }
+  to   { opacity: 1; transform: translateX(0) scaleX(1); }
+}
+
+/* Panel "slide out of rails" */
+@keyframes dp-rail-out {
+  from { opacity: 1; transform: translateX(0) scaleX(1); }
+  to   { opacity: 0; transform: translateX(12px) scaleX(0.96); }
+}
+
+/* Status badge "stamp" — decisive, terminal-like */
+@keyframes dp-stamp {
+  0%   { transform: scale(0.6) rotate(-2deg); opacity: 0; }
+  55%  { transform: scale(1.08) rotate(1deg); opacity: 1; }
+  80%  { transform: scale(0.96) rotate(-0.5deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+/* Maximize: "fullscreen terminal" — scale from center, brass border draw */
+@keyframes dp-maximize {
+  0%   { opacity: 0; transform: scale(0.92) translateY(8px); border-color: transparent; }
+  60%  { border-color: var(--color-brass); }
+  100% { opacity: 1; transform: scale(1) translateY(0); border-color: var(--color-brass); }
+}
+
+/* Minimize: reverse */
+@keyframes dp-minimize {
+  0%   { opacity: 1; transform: scale(1) translateY(0); border-color: var(--color-brass); }
+  40%  { border-color: transparent; }
+  100% { opacity: 0; transform: scale(0.92) translateY(8px); border-color: transparent; }
+}
+
+/* Active terminal "heartbeat" — subtle brass glow pulse */
+@keyframes dp-heartbeat {
+  0%, 100% { box-shadow: 0 0 0 1px var(--color-brass), 0 0 0 0 rgba(198,161,91,0); }
+  20%    { box-shadow: 0 0 0 1px var(--color-brass), 0 0 12px 3px rgba(198,161,91,0.35); }
+  40%    { box-shadow: 0 0 0 1px var(--color-brass), 0 0 0 0 rgba(198,161,91,0); }
+}
+
+/* Progress fill — terminal bar style */
+@keyframes dp-bar-fill {
+  from { transform: scaleX(0); opacity: 0.6; }
+  to   { transform: scaleX(1); opacity: 1; }
+}
+
+/* Accordion — terminal panel unfold */
+@keyframes dp-unfold {
+  from { opacity: 0; transform: scaleY(0.85) translateY(-4px); transform-origin: top; }
+  to   { opacity: 1; transform: scaleY(1) translateY(0); transform-origin: top; }
+}
+
+/* Toast — "notification daemon" slide from top-right with brass accent */
+@keyframes dp-daemon-in {
+  from { opacity: 0; transform: translateX(20px) translateY(-8px) scale(0.95); }
+  to   { opacity: 1; transform: translateX(0) translateY(0) scale(1); }
+}
+
+/* Page transition — "workspace switch" crossfade with brass line */
+@keyframes dp-ws-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes dp-ws-out {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-8px); }
+}
+
+/* Dropdown — "menu deploy" */
+@keyframes dp-deploy {
+  from { opacity: 0; transform: translateY(-6px) scaleY(0.92); transform-origin: top; }
+  to   { opacity: 1; transform: translateY(0) scaleY(1); transform-origin: top; }
+}
+
+/* Tooltip — "man page" fade */
+@keyframes dp-man-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Split divider drag — brass highlight */
+@keyframes dp-divider-active {
+  from { background: var(--color-border-strong); box-shadow: 0 0 0 0 rgba(198,161,91,0); }
+  to   { background: var(--color-brass); box-shadow: 0 0 8px 2px rgba(198,161,91,0.4); }
+}
+
+/* ---- Utility classes ---- */
 
 @layer utilities {
-  .animate-fade-in { animation: dp-fade-in 0.25s ease-out both; }
-  .animate-slide-up { animation: dp-slide-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
-  .animate-scale-in { animation: dp-scale-in 0.2s ease-out both; }
-  .animate-status-pop { animation: dp-status-pop 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
-  .animate-pulse-soft { animation: dp-pulse-soft 1.6s ease-in-out infinite; }
+  /* Entrance: terminal boot */
+  .animate-boot { animation: dp-boot 0.35s var(--dp-ease-snap) both; }
 
-  /* Staggered entrance for lists — set --dp-delay per item (e.g. style={{ '--dp-delay': `${i * 40}ms` }}) */
-  .animate-stagger-in {
-    animation: dp-slide-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Entrance: rail slide (panels, cards) */
+  .animate-rail-in  { animation: dp-rail-in  0.3s var(--dp-ease-out) both; }
+  .animate-rail-out { animation: dp-rail-out 0.22s var(--dp-ease-in) both; }
+
+  /* Entrance: workspace switch */
+  .animate-ws-in  { animation: dp-ws-in  0.18s var(--dp-ease-out) both; }
+  .animate-ws-out { animation: dp-ws-out 0.14s var(--dp-ease-in) both; }
+
+  /* Counter tick */
+  .animate-tick { animation: dp-tick var(--dp-duration-counter) var(--dp-ease-snap) both; }
+
+  /* Status stamp */
+  .animate-stamp { animation: dp-stamp 0.28s var(--dp-ease-snap) both; }
+
+  /* Maximize/minimize */
+  .animate-maximize { animation: dp-maximize var(--dp-duration-panel) var(--dp-ease-snap) both; }
+  .animate-minimize { animation: dp-minimize var(--dp-duration-exit) var(--dp-ease-in) both; }
+
+  /* Active terminal heartbeat */
+  .animate-heartbeat { animation: dp-heartbeat 3s ease-in-out infinite; }
+
+  /* Progress bar fill */
+  .animate-bar-fill { animation: dp-bar-fill 0.55s var(--dp-ease-out) forwards; transform-origin: left; }
+
+  /* Accordion unfold */
+  .animate-unfold { animation: dp-unfold var(--dp-duration-entrance) var(--dp-ease-snap) both; }
+
+  /* Toast daemon */
+  .animate-daemon-in { animation: dp-daemon-in 0.22s var(--dp-ease-snap) both; }
+
+  /* Dropdown deploy */
+  .animate-deploy { animation: dp-deploy 0.14s var(--dp-ease-out) both; }
+
+  /* Tooltip man page */
+  .animate-man-in { animation: dp-man-in 0.12s var(--dp-ease-out) both; }
+
+  /* Brass sweep shimmer (loading) */
+  .brass-shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--color-panel-2) 20%,
+      var(--color-brass) 40%,
+      var(--color-brass-soft) 50%,
+      var(--color-brass) 60%,
+      var(--color-panel-2) 80%
+    );
+    background-size: 200% 100%;
+    animation: dp-brass-sweep 1.6s ease-in-out infinite;
+  }
+
+  /* Staggered rail entrance — set --dp-delay per item */
+  .animate-stagger-rail {
+    animation: dp-rail-in 0.32s var(--dp-ease-out) both;
     animation-delay: var(--dp-delay, 0ms);
   }
 
-  /* Skeleton shimmer for loading states */
-  .skeleton-shimmer {
+  /* Brass underline draw (for active nav) */
+  .brass-underline::after {
+    content: "";
+    display: block;
+    height: 2px;
+    background: var(--color-brass);
+    width: 0;
+    opacity: 0;
+    animation: dp-brass-draw 0.25s var(--dp-ease-out) forwards;
+  }
+
+  /* Split divider active state */
+  .split-divider-drag {
+    animation: dp-divider-active 0.15s var(--dp-ease-out) forwards;
+  }
+}
+
+/* Smooth state transitions on interactive elements */
+@layer components {
+  .btn {
+    transition:
+      background-color var(--dp-duration-hover) ease,
+      border-color var(--dp-duration-hover) ease,
+      transform var(--dp-duration-press) ease,
+      box-shadow var(--dp-duration-hover) ease;
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .panel {
+    transition: border-color var(--dp-duration-hover) ease, box-shadow var(--dp-duration-panel) ease;
+  }
+
+  /* Terminal cards fade in smoothly on mount */
+  .terminal-panel {
+    animation: dp-fade-in 0.3s var(--dp-ease-out) both;
+  }
+
+  /* Status badges pop gently on change */
+  [data-status-badge] {
+    transition: background-color 0.25s ease, color 0.25s ease, transform 0.2s ease;
+  }
+
+  /* Select/dropdown smooth transitions */
+  select.input {
+    transition: border-color var(--dp-duration-hover) ease,
+                box-shadow var(--dp-duration-hover) ease;
+  }
+
+  /* Smooth counter value changes */
+  .stat-counter {
+    transition: transform var(--dp-duration-counter) var(--dp-ease-out),
+                opacity var(--dp-duration-counter) var(--dp-ease-out);
+  }
+
+  /* Smooth tab content transitions */
+  .tab-content {
+    transition: opacity var(--dp-duration-entrance) var(--dp-ease-out),
+                transform var(--dp-duration-entrance) var(--dp-ease-out);
+  }
+
+  /* Terminal screen shimmer while connecting */
+  .terminal-connecting-shimmer {
+    position: absolute;
+    inset: 0;
     background: linear-gradient(
       90deg,
       var(--color-panel-2) 25%,
@@ -229,34 +464,9 @@ a:focus-visible,
     );
     background-size: 200% 100%;
     animation: dp-shimmer 1.4s linear infinite;
-  }
-}
-
-/* Smooth state transitions on interactive elements */
-@layer components {
-  .btn {
-    transition:
-      background-color 0.18s ease,
-      border-color 0.18s ease,
-      transform 0.12s ease,
-      box-shadow 0.18s ease;
-  }
-  .btn:active:not(:disabled) {
-    transform: scale(0.97);
-  }
-
-  .panel {
-    transition: border-color 0.2s ease, box-shadow 0.25s ease;
-  }
-
-  /* Terminal cards fade in smoothly on mount */
-  .terminal-panel {
-    animation: dp-fade-in 0.3s ease-out both;
-  }
-
-  /* Status badges pop gently on change */
-  [data-status-badge] {
-    transition: background-color 0.25s ease, color 0.25s ease;
+    pointer-events: none;
+    border-radius: var(--radius-panel);
+    z-index: 5;
   }
 }
 
@@ -267,6 +477,11 @@ a:focus-visible,
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .terminal-panel-maximized,
+  .terminal-panel-minimizing {
+    animation: none !important;
   }
 }
 
@@ -279,6 +494,10 @@ a:focus-visible,
 .terminal-panel-active {
   border-color: var(--color-brass);
   box-shadow: 0 0 0 1px var(--color-brass);
+}
+
+.terminal-panel-active-glow {
+  box-shadow: 0 0 0 1px var(--color-brass), 0 0 8px 0 rgba(198, 161, 91, 0.3);
 }
 
 .terminal-panel-maximized {

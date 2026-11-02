@@ -112,18 +112,20 @@ export function WorkflowProgressDashboard({
         />
       </div>
       <ul className="task-list-scroll mt-2 grid max-h-72 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2">
-        {tasks.map((task) => {
+        {tasks.map((task, index) => {
           const terminal = session?.terminals.find((entry) => entry.id === task.id);
           const failedTerminal =
             terminal?.status === 'error' || terminal?.status === 'unavailable';
+          const staggerDelay = index * 30;
           return (
             <li
               key={task.id}
-              className={`rounded border px-2 py-1.5 ${
+              className={`rounded border px-2 py-1.5 animate-stagger-rail ${
                 task.state === 'failed' || failedTerminal
                   ? 'border-danger bg-danger-soft'
                   : 'border-line bg-panel'
               }`}
+              style={{ '--dp-delay': `${Math.min(staggerDelay, 350)}ms` } as React.CSSProperties}
             >
               <p className="font-medium text-ink">
                 {taskTitle(task.description) || task.agentName}

@@ -94,7 +94,7 @@ export function Tooltip({
   const tooltip = visible ? (
     <div
       ref={tooltipRef}
-      className="fixed z-50 pointer-events-none text-[10px] font-medium text-ink bg-brass px-2 py-1 rounded shadow-lg whitespace-nowrap animate-tooltip-in"
+      className="fixed z-50 pointer-events-none text-[10px] font-medium text-ink bg-brass px-2 py-1 rounded shadow-lg whitespace-nowrap animate-man-in"
       style={positionStyles}
       role="tooltip"
       aria-hidden="true"

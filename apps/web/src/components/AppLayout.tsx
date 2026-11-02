@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import type { BackendState } from '../hooks/useBackend';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
+import { PageTransition } from './PageTransition';
 
 export interface AppOutletContext {
   backend: BackendState;
@@ -28,7 +29,9 @@ export function AppLayout({ backend, onNewSession }: AppLayoutProps) {
         <TopBar backend={backend} />
         <main className="min-h-0 flex-1 overflow-y-auto p-4 lg:p-6">
           <Suspense fallback={<RouteFallback />}>
-            <Outlet context={context} />
+            <PageTransition>
+              <Outlet context={context} />
+            </PageTransition>
           </Suspense>
         </main>
       </div>

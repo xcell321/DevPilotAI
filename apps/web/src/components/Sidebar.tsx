@@ -43,9 +43,9 @@ export function Sidebar({ backend, onNewSession }: SidebarProps) {
               end={item.end}
               title={item.label}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                `flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors relative ${
                   isActive
-                    ? 'bg-primary-soft text-ink'
+                    ? 'bg-primary-soft text-ink brass-underline'
                     : 'text-muted hover:bg-hover hover:text-ink'
                 }`
               }

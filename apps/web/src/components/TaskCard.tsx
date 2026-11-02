@@ -56,6 +56,31 @@ interface TaskCardProps {
   onEditCancel: () => void;
 }
 
+interface TaskCardProps {
+  task: AgentTaskSummary;
+  tasks: AgentTaskSummary[];
+  terminal: SessionTerminal | null;
+  live: boolean;
+  selected: boolean;
+  sessionId: string;
+  busyKey: string | null;
+  completionSummary: string;
+  acknowledgeNoValidation: boolean;
+  allowOutOfScope: boolean;
+  editDraft: TaskEditDraft | null;
+  logs: TaskLogs | null;
+  onSelect: () => void;
+  onCompletionSummaryChange: (value: string) => void;
+  onAcknowledgeNoValidationChange: (value: boolean) => void;
+  onAllowOutOfScopeChange: (value: boolean) => void;
+  actions: TaskActions;
+  onSaveAssignment: () => void;
+  onEditDraftChange: (draft: TaskEditDraft) => void;
+  onEditCancel: () => void;
+  /** Index for stagger delay */
+  index?: number;
+}
+
 export function TaskCard({
   task,
   tasks,
@@ -77,10 +102,13 @@ export function TaskCard({
   onSaveAssignment,
   onEditDraftChange,
   onEditCancel,
+  index = 0,
 }: TaskCardProps) {
+  const staggerDelay = index * 30;
   return (
     <div
-      className="rounded-lg border border-line bg-panel-2 p-2.5 text-[11px] animate-slide-up"
+      className="rounded-lg border border-line bg-panel-2 p-2.5 text-[11px] animate-stagger-rail"
+      style={{ '--dp-delay': `${Math.min(staggerDelay, 350)}ms` } as React.CSSProperties}
       data-testid={`orchestration-task-${task.id}`}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">

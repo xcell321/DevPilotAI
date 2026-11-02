@@ -13,6 +13,7 @@ import { EmptyState } from '../components/EmptyState';
 import { EnabledBadge, LaunchBadge } from '../components/Badge';
 import { Notice } from '../components/Notice';
 import type { AppOutletContext } from '../components/AppLayout';
+import { StatTile } from '../components/StatTile';
 
 export function OverviewPage() {
   const { backend, openNewSession } = useOutletContext<AppOutletContext>();
@@ -65,19 +66,14 @@ export function OverviewPage() {
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
-            <div key={stat.label} className="panel p-4">
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-xs font-medium text-muted">{stat.label}</p>
-                <Icon className="h-4 w-4 text-muted" />
-              </div>
-              <p
-                className="mt-3 text-2xl font-semibold tracking-tight text-ink"
-                data-testid={stat.testId}
-              >
-                {stat.value ?? '—'}
-              </p>
-              <p className="mt-1 text-[11px] text-muted">{stat.hint}</p>
-            </div>
+            <StatTile
+              key={stat.label}
+              label={stat.label}
+              value={stat.value ?? null}
+              hint={stat.hint}
+              icon={<Icon className="h-4 w-4 text-muted" />}
+              testId={stat.testId}
+            />
           );
         })}
       </section>

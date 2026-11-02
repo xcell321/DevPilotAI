@@ -199,6 +199,12 @@ export function TerminalPanel({
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
 
+  const live = isLiveTerminal(terminal.status);
+  const status = effectiveStatus(terminal, exit);
+  const connecting = connection === 'connecting' || connection === 'reconnecting';
+  const isMaximizing = maximized;
+  const isMinimizing = !maximized && visible === false;
+
   useEffect(() => {
     if (!menuOpen) return;
     const closeOnPointerDown = (event: PointerEvent) => {
@@ -245,8 +251,6 @@ export function TerminalPanel({
   };
 
   refreshRef.current = onStatusRefresh;
-  const live = isLiveTerminal(terminal.status);
-  const status = effectiveStatus(terminal, exit);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -500,8 +504,8 @@ export function TerminalPanel({
   return (
     <article
       className={`terminal-panel panel flex h-full w-full min-h-0 flex-col overflow-hidden ${
-        active ? 'terminal-panel-active' : ''
-      } ${maximized ? 'terminal-panel-maximized' : ''}`}
+        active ? 'terminal-panel-active animate-heartbeat' : ''
+      } ${isMaximizing ? 'animate-maximize' : ''} ${isMinimizing ? 'animate-minimize' : ''}`}
       style={{ display: visible || maximized ? undefined : 'none' }}
       onPointerDownCapture={onActivate}
       onFocusCapture={onActivate}
@@ -510,6 +514,9 @@ export function TerminalPanel({
         ptyDimensions.cols > 0 ? `${ptyDimensions.cols}x${ptyDimensions.rows}` : undefined
       }
     >
+      {connecting ? (
+        <div className="brass-shimmer absolute inset-0 rounded-panel pointer-events-none" aria-hidden="true" />
+      ) : null}
       <header className="terminal-panel-header flex shrink-0 items-center justify-between gap-2 border-b border-line bg-panel px-2.5 py-1.5">
         <div className="flex min-w-0 items-center gap-2">
           <h2 className="truncate text-sm font-semibold text-ink">{terminal.toolName}</h2>

@@ -41,7 +41,11 @@ export function WorkflowPlanPreview({
       ) : null}
       <ol className="mt-2 flex flex-col gap-1.5">
         {plan.tasks.map((task, index) => (
-          <li key={`${task.toolId}-${index}`} className="rounded border border-line bg-panel p-2">
+          <li
+            key={`${task.toolId}-${index}`}
+            className="rounded border border-line bg-panel p-2 animate-stagger-rail"
+            style={{ '--dp-delay': `${Math.min(index * 30, 350)}ms` } as React.CSSProperties}
+          >
             <p className="font-medium text-ink">{task.agentName}</p>
             <p className="mt-0.5">{briefText(task.description)}</p>
             <details className="mt-1">

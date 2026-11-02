@@ -433,7 +433,7 @@ export function TaskOrchestrationPanel({
         </p>
       ) : (
         <div className="flex flex-col gap-2">
-          {tasks.map((task) => {
+          {tasks.map((task, index) => {
             const terminal = terminalFor(session, task.id);
             const live = isTerminalLive(session, task.id);
             return (
@@ -468,6 +468,7 @@ export function TaskOrchestrationPanel({
                 onSaveAssignment={() => void saveAssignment(task)}
                 onEditDraftChange={setEditDraft}
                 onEditCancel={() => setEditDraft(null)}
+                index={index}
               />
             );
           })}

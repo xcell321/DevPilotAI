@@ -21,7 +21,7 @@ export function StatStrip({ items, columns = 4 }: StatStripProps) {
     >
       {items.map((item) => (
         <div key={item.label} className="flex min-w-0 flex-col gap-0.5">
-          <dd className="font-serif text-xl leading-none text-ink">{item.value}</dd>
+          <dd className="font-serif text-xl leading-none text-ink stat-counter animate-tick">{item.value}</dd>
           <dt className="truncate text-[10px] uppercase tracking-[0.12em] text-muted">
             {item.label}
           </dt>

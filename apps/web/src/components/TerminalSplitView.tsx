@@ -92,7 +92,7 @@ export function TerminalSplitView({
   return (
     <div
       ref={containerRef}
-      className={`flex h-full min-h-0 min-w-0 ${
+      className={`flex h-full min-h-0 min-w-0 terminal-split-view ${
         horizontal
           ? 'flex-row'
           : 'flex-col'
@@ -104,11 +104,13 @@ export function TerminalSplitView({
       data-testid={`split-${path.map((branch) => (branch ? '1' : '0')).join('') || 'root'}`}
     >
       <div
-        className="min-h-0 min-w-0 shrink-0"
+        className="min-h-0 min-w-0 shrink-0 transition-all"
         style={{
           flexBasis: `calc(${node.ratio * 100}% - ${node.ratio * SPLIT_DIVIDER_SIZE}px)`,
           minWidth: stacked ? 0 : firstSize.width,
           minHeight: stacked ? stackedMinimumHeight(node.first) : firstSize.height,
+          transitionDuration: '0.3s',
+          transitionTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)',
         }}
       >
         <TerminalSplitView
@@ -126,7 +128,7 @@ export function TerminalSplitView({
         aria-valuenow={Math.round(node.ratio * 100)}
         aria-label={`Resize ${horizontal ? 'vertical' : 'horizontal'} terminal divider`}
         tabIndex={0}
-        className={`group relative z-10 shrink-0 touch-none ${
+        className={`group relative z-10 shrink-0 touch-none split-divider-drag ${
           horizontal
             ? 'w-2 cursor-col-resize'
             : 'h-2 cursor-row-resize'
@@ -137,7 +139,7 @@ export function TerminalSplitView({
         data-testid={`split-divider-${path.map((branch) => (branch ? '1' : '0')).join('') || 'root'}`}
       >
         <span
-          className={`absolute rounded-full bg-lineStrong transition-colors group-hover:bg-primary ${
+          className={`absolute rounded-full bg-lineStrong ${
             horizontal
               ? 'inset-y-0 left-1/2 w-px -translate-x-1/2'
               : 'inset-x-0 top-1/2 h-px -translate-y-1/2'

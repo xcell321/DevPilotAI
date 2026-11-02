@@ -162,7 +162,7 @@ export function TaskStateBadge({ state }: { state: AgentTaskState }) {
     <span
       key={state}
       data-status-badge
-      className={`inline-flex items-center rounded-full border border-line px-2 py-0.5 text-[11px] font-medium animate-status-pop ${TASK_STATE_CLASSES[state]}`}
+      className={`inline-flex items-center rounded-full border border-line px-2 py-0.5 text-[11px] font-medium animate-stamp ${TASK_STATE_CLASSES[state]}`}
     >
       {TASK_STATE_LABELS[state]}
     </span>
@@ -174,7 +174,7 @@ export function TerminalStatusBadge({ status }: { status: TerminalDisplayStatus 
     <span
       key={status}
       data-status-badge
-      className={`inline-flex items-center rounded-full border border-line px-2 py-0.5 text-[11px] font-medium animate-status-pop ${SESSION_STATUS_CLASSES[status]}`}
+      className={`inline-flex items-center rounded-full border border-line px-2 py-0.5 text-[11px] font-medium animate-stamp ${SESSION_STATUS_CLASSES[status]}`}
     >
       {TERMINAL_STATUS_LABELS[status]}
     </span>
