@@ -80,7 +80,7 @@ export function TaskCard({
 }: TaskCardProps) {
   return (
     <div
-      className="rounded-lg border border-line bg-panel-2 p-2.5 text-[11px]"
+      className="rounded-lg border border-line bg-panel-2 p-2.5 text-[11px] animate-slide-up"
       data-testid={`orchestration-task-${task.id}`}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">

@@ -160,7 +160,9 @@ const TASK_STATE_CLASSES: Record<AgentTaskState, string> = {
 export function TaskStateBadge({ state }: { state: AgentTaskState }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border border-line px-2 py-0.5 text-[11px] font-medium ${TASK_STATE_CLASSES[state]}`}
+      key={state}
+      data-status-badge
+      className={`inline-flex items-center rounded-full border border-line px-2 py-0.5 text-[11px] font-medium animate-status-pop ${TASK_STATE_CLASSES[state]}`}
     >
       {TASK_STATE_LABELS[state]}
     </span>
@@ -170,7 +172,9 @@ export function TaskStateBadge({ state }: { state: AgentTaskState }) {
 export function TerminalStatusBadge({ status }: { status: TerminalDisplayStatus }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border border-line px-2 py-0.5 text-[11px] font-medium ${SESSION_STATUS_CLASSES[status]}`}
+      key={status}
+      data-status-badge
+      className={`inline-flex items-center rounded-full border border-line px-2 py-0.5 text-[11px] font-medium animate-status-pop ${SESSION_STATUS_CLASSES[status]}`}
     >
       {TERMINAL_STATUS_LABELS[status]}
     </span>

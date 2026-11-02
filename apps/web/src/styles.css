@@ -170,6 +170,96 @@ a:focus-visible,
   outline-offset: 1px;
 }
 
+/* ------------------------------------------------------------------
+ * Motion system — subtle, premium animations for the editorial-dark theme.
+ * All animations respect prefers-reduced-motion (see below).
+ * ------------------------------------------------------------------ */
+
+@keyframes dp-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dp-slide-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes dp-scale-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes dp-pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes dp-shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+
+@keyframes dp-status-pop {
+  0% { transform: scale(0.85); opacity: 0; }
+  60% { transform: scale(1.04); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@layer utilities {
+  .animate-fade-in { animation: dp-fade-in 0.25s ease-out both; }
+  .animate-slide-up { animation: dp-slide-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .animate-scale-in { animation: dp-scale-in 0.2s ease-out both; }
+  .animate-status-pop { animation: dp-status-pop 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .animate-pulse-soft { animation: dp-pulse-soft 1.6s ease-in-out infinite; }
+
+  /* Staggered entrance for lists — set --dp-delay per item (e.g. style={{ '--dp-delay': `${i * 40}ms` }}) */
+  .animate-stagger-in {
+    animation: dp-slide-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--dp-delay, 0ms);
+  }
+
+  /* Skeleton shimmer for loading states */
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--color-panel-2) 25%,
+      var(--color-hover) 50%,
+      var(--color-panel-2) 75%
+    );
+    background-size: 200% 100%;
+    animation: dp-shimmer 1.4s linear infinite;
+  }
+}
+
+/* Smooth state transitions on interactive elements */
+@layer components {
+  .btn {
+    transition:
+      background-color 0.18s ease,
+      border-color 0.18s ease,
+      transform 0.12s ease,
+      box-shadow 0.18s ease;
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .panel {
+    transition: border-color 0.2s ease, box-shadow 0.25s ease;
+  }
+
+  /* Terminal cards fade in smoothly on mount */
+  .terminal-panel {
+    animation: dp-fade-in 0.3s ease-out both;
+  }
+
+  /* Status badges pop gently on change */
+  [data-status-badge] {
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+}
+
 /* Respect reduced-motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *,
