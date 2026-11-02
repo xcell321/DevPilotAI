@@ -80,9 +80,10 @@ export function OverviewPage() {
 
       <section className="grid gap-4 lg:grid-cols-2">
         {counts?.sessions ? (
-          <div className="panel flex flex-col justify-between gap-4 p-4">
+          <div className="panel flex flex-col justify-between gap-4 p-5 relative overflow-hidden">
+            <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-primary via-primary/60 to-transparent" />
             <div className="flex items-start gap-3">
-              <span className="rounded-lg bg-primary-soft p-2 text-primary">
+              <span className="rounded-xl bg-primary-soft p-2.5 text-primary ring-1 ring-primary/20">
                 <MessageSquare className="h-5 w-5" />
               </span>
               <div>
@@ -116,9 +117,9 @@ export function OverviewPage() {
           />
         )}
 
-        <div className="panel flex flex-col">
-          <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
-            <h2 className="text-sm font-semibold text-ink">CLI readiness</h2>
+        <div className="panel flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-line bg-panel-2/50 px-5 py-3.5">
+            <h2 className="text-[13px] font-semibold tracking-wide text-ink">CLI readiness</h2>
             <Link to="/tools" className="text-xs font-medium text-primary hover:underline">
               View all
             </Link>
@@ -151,9 +152,12 @@ export function OverviewPage() {
         </div>
       </section>
 
-      <section className="panel p-4">
-        <h2 className="text-sm font-semibold text-ink">Local runtime</h2>
-        <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+      <section className="panel p-5">
+        <div className="flex items-center gap-2.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-ok animate-pulse" />
+          <h2 className="text-[13px] font-semibold tracking-wide text-ink">Local runtime</h2>
+        </div>
+        <div className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
           <div className="flex items-start gap-2.5">
             <Activity className="mt-0.5 h-4 w-4 text-muted" />
             <div>

@@ -43,10 +43,10 @@ export function Sidebar({ backend, onNewSession }: SidebarProps) {
               end={item.end}
               title={item.label}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors relative ${
+                `group flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-all duration-150 relative ${
                   isActive
-                    ? 'bg-primary-soft text-ink brass-underline'
-                    : 'text-muted hover:bg-hover hover:text-ink'
+                    ? 'bg-primary-soft text-ink shadow-[inset_2px_0_0_var(--color-primary)]'
+                    : 'text-muted hover:bg-hover hover:text-ink hover:translate-x-0.5'
                 }`
               }
             >

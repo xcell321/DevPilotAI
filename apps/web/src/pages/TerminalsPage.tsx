@@ -572,7 +572,10 @@ export function TerminalsPage() {
     <div className="flex h-full min-h-[600px] gap-4">
       {/* Main content */}
       <div className="flex min-w-0 flex-1 flex-col gap-3">
-      <h2 className="font-serif text-2xl leading-tight text-ink">Terminals</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="font-serif text-2xl leading-tight text-ink">Terminals</h2>
+        <span className="eyebrow text-muted">Local agent workspace</span>
+      </div>
 
       {/* Workflow section - boxed */}
       <div className="panel shrink-0">
@@ -584,8 +587,10 @@ export function TerminalsPage() {
       </div>
 
       {/* Session section - boxed */}
-      <div className="panel shrink-0">
-        <span className="eyebrow text-muted block px-2.5 pt-2">Session</span>
+      <div className="panel shrink-0 overflow-hidden">
+        <div className="border-b border-line bg-panel-2/50 px-4 py-2.5">
+          <span className="eyebrow text-muted">Session</span>
+        </div>
         <TerminalSessionToolbar
         sessions={sessions}
         selected={selected}
